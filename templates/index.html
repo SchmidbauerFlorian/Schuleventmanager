@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block body %}
+    <div class="welcome-container">
+        <div class="welcome-head-container">
+            <p class="copyright">© by Florian Schmidbauer und Kilian Maierhofer</p>
+        </div>
+        <div class="welcome-main-container">
+            <h2>SEM der Schuleventmanager</h2>
+            <p>
+                Ein gemeinsamer Arbeitsbereich für 
+                Schüler:innen und Lehrkräfte zur 
+                Planung, Organisation und Verwaltung 
+                von Schulevents.
+            </p>
+        </div>
+        <div class="welcome-footer-container">
+            <div>
+                <div id="overlayWelcome" class="overlay-container">
+                    <div id="overlay" class="overlay">
+                        <div class="overlay-headline">
+                            <div>
+                                <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
+                                <h3>Neues Event erstellen</h3>
+                            </div>
+                            <div id="btnCloseOverlay">
+                                <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                            </div>
+                        </div>
+                        <div>
+                            <p>Name</p>
+                            <input id="inputEventName" type="text">
+                        </div>
+                        <div id="btnCreateEventSubmit" class="overlay-submit">
+                            <img src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
+                        </div>
+                    </div>
+                    <img id="overlay-deer" src="{{ url_for('static', filename='assets/images/overlay-deer.svg') }}" alt="Deer Image">
+                </div>
+                <img src="{{ url_for('static', filename='assets/images/welcome-arrow.svg') }}" alt="Arrow Left Icon">
+                <h1>Hilfe</h1>
+            </div>
+            <div id="btnStartApp">
+                <h1>Loslegen</h1>
+                <img src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Start Arrow Icon">
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/welcome.js') }}"></script>
+{% endblock %}

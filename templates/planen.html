@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+
+{% block body %}
+<header>
+    <div>
+        <img src="{{ url_for('static', filename='assets/images/sem-logo.svg') }}" alt="Schuleventmanager Logo">
+        <h3>Schuleventmanager</h3>
+    </div>
+    <div id="btnProfile">
+        <h3>{{ user.displayName }}</h3>
+        <img src="{{ url_for('static', filename='assets/images/logout.svg') }}" alt="Logout Icon">
+    </div>
+</header>
+<main>
+    <section class="section-allgemein">
+        <div class="section-head">
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/globe.svg') }}" alt="Globe Icon">
+                <h3>Allgemein</h3>
+            </div>
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+            </div>
+        </div>
+        <div class="section-body-allgemein">
+            <div>
+                <div id="dropdownEventsBtn" class="button-light button-wide">
+                    <div id="dropdownEvents" class="dropdown-container">
+                        <div class="dropdown-item">
+                            <img src="{{ url_for('static', filename='assets/images/ticket.svg') }}" alt="Ticket Icon">
+                            <p>Alle Events</p>
+                        </div>
+                    </div>
+                    <div>
+                        <img src="{{ url_for('static', filename='assets/images/ticket.svg') }}" alt="Ticket Icon">
+                        <p id="dropdownSelectedItem">Alle Events</p>
+                    </div>
+                    <div>
+                        <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                    </div>
+                </div>
+                <div id="btnCreateEvent" class="button-dark">
+                    <p>Neues Event erstellen</p>
+                    <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                </div>
+            </div>
+            <div>
+                <div id="toggleMode" class="button-light" data-current-mode="planen">
+                    <div>
+                        <img src="{{ url_for('static', filename='assets/images/compass.svg') }}" alt="Compass Icon">
+                        <p>Planen</p>
+                    </div>
+                    <div>
+                        <img src="{{ url_for('static', filename='assets/images/toggle-right.svg') }}" alt="Toggle Right Icon">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <article>
+        <section class="section-eventdetails">
+            <div class="section-head">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/info-square.svg') }}" alt="Info Square Icon">
+                    <h3>Eventdetails</h3>
+                </div>
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+                </div>
+            </div>
+            <div class="section-body-eventdetails">
+                <div>
+                    <p>Name</p>
+                    <h2 id="eventName">Alle Events</h2>
+                </div>
+                <div>
+                    <p>Erstellt am</p>
+                    <h2 id="eventCreatedAt">N/A</h2>
+                </div>
+                <div>
+                    <p>Dauer</p>
+                    <h2 id="eventDuration">N/A</h2>
+                </div>
+                <div>
+                    <div class="button-red">
+                        <div>
+                            <p>Löschen</p>
+                        </div>
+                        <div>
+                            <img src="{{ url_for('static', filename='assets/images/trash.svg') }}" alt="Trash Icon">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="section-kommunikation">
+            <div class="section-head">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/inbox.svg') }}" alt="Inbox Icon">
+                    <h3>Kommunikation</h3>
+                </div>
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+                </div>
+            </div>
+            <div class="section-body-kommunikation">
+                <div id="message-history">
+                    <h2>Verlauf</h2>
+                    <div class="verlauf-item">
+                        <p class="text-bold">N/A</p>
+                        <p>N/A</p>
+                    </div>
+                </div>
+                <div class="button-container">
+                    <div class="button-dark">
+                        <p>Popup anzeigen</p>
+                        <img src="{{ url_for('static', filename='assets/images/popup.svg') }}" alt="Popup Icon">
+                    </div>
+                    <div class="button-dark">
+                        <p>Email versenden</p>
+                        <img src="{{ url_for('static', filename='assets/images/mail.svg') }}" alt="Mail Icon">
+                    </div>
+                </div>
+            </div>
+        </section>
+    </article>
+    <article>
+        <section class="section-ressourcen">
+            <div class="section-head">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/ressource.svg') }}" alt="Ressource Icon">
+                    <h3>Ressourcen</h3>
+                </div>
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+                </div>
+            </div>
+            <div class="section-body-ressourcen">
+                <div class="diagram">
+                    <div id="stats-users-graph" class="diagram-item diagram-users">
+                        <img src="{{ url_for('static', filename='assets/images/users.svg') }}" alt="Users Icon">
+                    </div>
+                    <div id="stats-lists-graph" class="diagram-item diagram-lists">
+                        <img src="{{ url_for('static', filename='assets/images/list.svg') }}" alt="Lists Icon">
+                    </div>
+                    <div id="stats-informations-graph" class="diagram-item diagram-single">
+                        <img src="{{ url_for('static', filename='assets/images/single.svg') }}" alt="Single Icon">
+                    </div>
+                </div>
+                <div>
+                    <div>
+                        <h1 id="stats-ressources">N/A</h1>
+                        <p>Ressourcen</p>
+                    </div>
+                    <div>
+                        <h2 id="stats-people">N/A</h2>
+                        <p>Personen</p>
+                    </div>
+                    <div>
+                        <h2 id="stats-lists">N/A</h2>
+                        <p>Listen</p>
+                    </div>
+                    <div>
+                        <h2 id="stats-informations">N/A</h2>
+                        <p>Einzel</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="section-benutzerinteraktionen">
+            <div class="section-head">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/presentation.svg') }}" alt="Presentation Icon">
+                    <h3>Benutzerinteraktionen</h3>
+                </div>
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+                </div>
+            </div>
+            <div class="section-body-benutzerinteraktionen">
+                <div>
+                    <div class="diagram">
+                        <div class="diagram-outer-circle">
+                            <div id="stats-inpreq-graph" class="diagram-inner-circle eingabe-pflicht">
+                                <p id="input-required-ratio">N/A</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="beschriftung">
+                        <div>
+                            <h2 id="inpreq-input-fields">N/A</h2>
+                            <p>Eingabefelder</p>
+                        </div>
+                        <div>
+                            <h2 id="inpreq-required-fields">N/A</h2>
+                            <p>Pflichtfelder</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="diagram">
+                        <div class="diagram-outer-circle">
+                            <div id="stats-inprem-graph" class="diagram-inner-circle eingabe-ausstehend">
+                                <p id="input-remaining-ratio">N/A</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="beschriftung">
+                        <div>
+                            <h2 id="inprem-input-fields">N/A</h2>
+                            <p>Eingabefelder</p>
+                        </div>
+                        <div>
+                            <h2 id="inprem-input-remaining">N/A</h2>
+                            <p>Ausstehend</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="diagram">
+                        <div class="diagram-outer-circle">
+                            <div id="stats-reqrem-graph" class="diagram-inner-circle pflicht-ausstehend">
+                                <p id="required-remaining-ratio">N/A</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="beschriftung">
+                        <div>
+                            <h2 id="reqrem-required-fields">N/A</h2>
+                            <p>Pflichtfelder</p>
+                        </div>
+                        <div>
+                            <h1 id="reqrem-required-remaining">N/A</h1>
+                            <p>Ausstehend</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </article>
+    <section class="section-timeline">
+        <div class="section-head">
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/calendar.svg') }}" alt="Calendar Icon">
+                <h3>Timeline</h3>
+            </div>
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/arrow-expand.svg') }}" alt="Arrow Expand Icon">
+            </div>
+        </div>
+        <div class="section-body-timeline">
+            <div class="headline-grid">
+                <p class="text-bold">Montag</p>
+                <p class="text-bold">Dienstag</p>
+                <p class="text-bold">Mittwoch</p>
+                <p class="text-bold">Donnerstag</p>
+
+                <p>02.03</p>
+                <p>06:00</p>
+                <p>12:00</p>
+                <p>18:00</p>
+
+                <p>03.03</p>
+                <p>06:00</p>
+                <p>12:00</p>
+                <p>18:00</p>
+                
+                <p>04.03</p>
+                <p>06:00</p>
+                <p>12:00</p>
+                <p>18:00</p>
+                
+                <p>05.03</p>
+                <p>06:00</p>
+                <p>12:00</p>
+                <p>18:00</p>
+            </div>
+            <div class="ressource-grid">
+                <div id="line-1" class="line"></div>
+                <div id="line-2" class="line"></div>
+                <div id="line-3" class="line"></div>
+                <div id="line-4" class="line"></div>
+
+                <div id="ressource-1" class="timeline-ressource">
+                    <img src="{{ url_for('static', filename='assets/images/ressource-timeline.svg') }}" alt="Ressource Icon">
+                </div>
+                <div id="ressource-2" class="timeline-ressource">
+                    <img src="{{ url_for('static', filename='assets/images/ressource-timeline.svg') }}" alt="Ressource Icon">
+                </div>
+                <div id="ressource-3" class="timeline-ressource">
+                    <img src="{{ url_for('static', filename='assets/images/ressource-timeline.svg') }}" alt="Ressource Icon">
+                </div>
+                <div id="ressource-4" class="timeline-ressource">
+                    <img src="{{ url_for('static', filename='assets/images/ressource-timeline.svg') }}" alt="Ressource Icon">
+                </div>
+            </div>
+            <div class="ressource-list">
+                <div>
+                    <p class="text-bold">Ressourcen</p>
+                    <p>Bezeichnung</p>
+                </div>
+                <div>
+                    <p>Erster Halbtag</p>
+                    <p>09:00 - 13:30</p>
+                </div>
+                <div>
+                    <p>HTL Disco</p>
+                    <p>22:00 - 02:00</p>
+                </div>
+                <div>
+                    <p>Ersatzprogramm Unwetter</p>
+                    <p>06:00 - 18:00</p>
+                </div>
+                <div>
+                    <p>Abendprogramm</p>
+                    <p>19:00 - 21:00</p>
+                </div>
+            </div>
+        </div>
+        <div class="section-footer">
+            <img src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
+            <img src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
+        </div>
+    </section>
+    <section class="section-event">
+        <div class="section-head">
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/ticket-event.svg') }}" alt="Event Icon">
+                <h3>Wintersportwoche</h3>
+            </div>
+            <div>
+                <img src="{{ url_for('static', filename='assets/images/arrow-expand.svg') }}" alt="Arrow Expand Icon">
+            </div>
+        </div>
+        <div class="section-body-event">
+            <div class="headline-grid">
+                <p class="text-bold">Ressourcen</p>
+                <p id="attribute-headline" class="text-bold">Attribute</p>
+
+                <p>Ebene 0</p>
+                <p>Ebene 1</p>
+                <p>Ebene 2</p>
+                <p>Ebene 3</p>
+                <p>Ebene 4</p>
+                <p>Ebene 5</p>
+                <p>Ebene 6</p>
+            </div>
+            <div class="ressource-grid">
+                <div id="tv-line-1" class="line"></div>
+
+                <div id="r-student" class="ressource ressource-dark">
+                    <p>Schüler</p>
+                    <img src="{{ url_for('static', filename='assets/images/tv-ressource-person.svg') }}" alt="People Icon">
+                </div>
+                <div id="r-name" class="ressource">
+                    <p>Name</p>
+                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
+                </div>
+                <div id="r-mail" class="ressource">
+                    <p>Email</p>
+                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
+                </div>
+                <div id="r-reason" class="ressource">
+                    <p>Grund</p>
+                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-input.svg') }}" alt="Input Icon">
+                </div>
+            </div>
+        </div>
+        <div class="section-footer">
+            <img src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
+            <img src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
+        </div>
+    </section>
+</main>
+<aside>
+    <div id="overlayContainer" class="overlay-container">
+        <!-- Overlay: Create Events -->
+        <div id="overlayCreateEvent" class="overlay">
+            <div class="overlay-headline">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
+                    <h3>Neues Event erstellen</h3>
+                </div>
+                <div class="btnCloseOverlay">
+                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                </div>
+            </div>
+            <div>
+                <p>Name</p>
+                <input id="inputEventName" type="text">
+            </div>
+            <div class="overlay-submit">
+                <img id="btnCreateEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
+            </div>
+        </div>
+        <!-- Overlay: Profile -->
+        <div id="overlayProfile" class="overlay">
+            <div class="overlay-headline">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
+                    <h3>Profil</h3>
+                </div>
+                <div class="btnCloseOverlay">
+                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                </div>
+            </div>
+            <div class="profile-overlay-body">
+                <div>
+                    <p>Name</p>
+                    <h2 class="break-line">{{ user.displayName }}</h2>
+                </div>
+                <div>
+                    <p>Email</p>
+                    <h2 class="break-line">{{ user.mail }}</h2>
+                </div>
+                <div id="btnLogout" class="button-dark">
+                    <p>Abmelden</p>
+                    <img src="{{ url_for('static', filename='assets/images/logout-button.svg') }}" alt="Logout Icon">
+                </div>
+            </div>
+        </div>
+        <img id="overlay-deer" src="{{ url_for('static', filename='assets/images/overlay-deer.svg') }}" alt="Deer Image">
+    </div>
+</aside>
+<footer>
+</footer>
+<script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/planen.js') }}"></script>
+{% endblock %}
