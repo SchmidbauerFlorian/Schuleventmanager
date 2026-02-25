@@ -2,7 +2,7 @@
 
 {% block body %}
 <header>
-    <div>
+    <div id="btnSEM">
         <img src="{{ url_for('static', filename='assets/images/sem-logo.svg') }}" alt="Schuleventmanager Logo">
         <h3>Schuleventmanager</h3>
     </div>
@@ -82,7 +82,7 @@
                     <h2 id="eventDuration">N/A</h2>
                 </div>
                 <div>
-                    <div class="button-red">
+                    <div id="btnDeleteEvent" class="button-red">
                         <div>
                             <p>Löschen</p>
                         </div>
@@ -393,6 +393,25 @@
                 <img id="btnCreateEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
             </div>
         </div>
+        <!-- Overlay: Delete Events -->
+        <div id="overlayDeleteEvent" class="overlay">
+            <div class="overlay-headline">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
+                    <h3>Event löschen</h3>
+                </div>
+                <div class="btnCloseOverlay">
+                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                </div>
+            </div>
+            <div>
+                <p id="deleteEventText">Zum löschen den Eventnamen in das Feld eintippen und bestätigen</p>
+                <input id="inputEventNameDelete" type="text">
+            </div>
+            <div class="overlay-submit">
+                <img id="btnDeleteEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
+            </div>
+        </div>
         <!-- Overlay: Profile -->
         <div id="overlayProfile" class="overlay">
             <div class="overlay-headline">
@@ -416,6 +435,39 @@
                 <div id="btnLogout" class="button-dark">
                     <p>Abmelden</p>
                     <img src="{{ url_for('static', filename='assets/images/logout-button.svg') }}" alt="Logout Icon">
+                </div>
+            </div>
+        </div>
+        <!-- Overlay: SEM -->
+        <div id="overlaySEM" class="overlay">
+            <div class="overlay-headline">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
+                    <h3>Schuleventmanager</h3>
+                </div>
+                <div class="btnCloseOverlay">
+                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                </div>
+            </div>
+            <div class="sem-overlay-body">
+                <div>
+                    <p>Informationen</p>
+                    <p class="text-bold">
+                        Der Schuleventmanager (SEM) ist der digitale Co-Working-Space, 
+                        der speziell für die Planung, Organisation und Verwaltung von Schulevents 
+                        entwickelt wurde. Mit SEM können Schüler:innen und Lehrkräfte 
+                        gemeinsam an der Gestaltung von Veranstaltungen arbeiten.
+                        Die Plattform bietet eine benutzerfreundliche Oberfläche im Swiss-Tech-Desin, 
+                        die es ermöglicht, Ressourcen zu verwalten, Informationen auszutauschenund und 
+                        die Kommunikation zwischen allen Beteiligten zu erleichtern.
+                    </p>
+                </div>
+                <div>
+                    <p>Credits</p>
+                    <p class="text-bold">
+                        Dieses Projekt wurde von Florian Schmidbauer und Kilian Maierhofer 
+                        im Rahmen der Diplomarbeit an der HTL Waidhofen/Ybbs mir Liebe entwickelt.
+                    </p>
                 </div>
             </div>
         </div>

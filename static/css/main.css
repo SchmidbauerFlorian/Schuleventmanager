@@ -252,6 +252,17 @@ footer{
     flex-direction: column;
     gap: calc(var(--space) * 2);
 }
+.overlay .sem-overlay-body{
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space) * 2);
+    width: calc(100% - (var(--space) * 6));
+}
+.overlay .sem-overlay-body > div{
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space) / 2);
+}
 .overlay .break-line{
     word-break: break-all;
     max-height: calc(var(--space) * 8);
@@ -627,7 +638,8 @@ footer{
 }
 #interactionTreeImg{
     width: auto;
-    height: 150px;
+    height: 144px;
+    transform: translateY(2px);
 }
 .welcome-container{
     display: flex;
@@ -670,7 +682,15 @@ footer{
 }
 #overlayWelcome{
     position: static;
+    cursor: default;
 }
 #btnStartApp{
     cursor: pointer;
+    animation: go 3s infinite;
+}
+@keyframes go {
+  0% { transform: translateX(0); }
+  60% { transform: translateX(0); }
+  70% { transform: translateX(5px); }
+  100% { transform: translateX(0); }
 }

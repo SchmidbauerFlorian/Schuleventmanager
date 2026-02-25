@@ -1,5 +1,9 @@
 from datetime import datetime
 
+def delete_event(event_name):
+    return "Event '{}' deleted successfully".format(event_name)
+
+
 def create_event(event_name):
     return "Event '{}' created successfully".format(event_name)
 
@@ -24,7 +28,7 @@ def get_events(user_id):
             "input-fields" : 50,
             "input-remaining" : 40,
             "required-fields" : 30,
-            "required-remaining" : 20
+            "required-remaining" : 30
         }
     },
     "all_events": [

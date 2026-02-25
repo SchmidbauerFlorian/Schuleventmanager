@@ -127,7 +127,7 @@
         <section class="section-interaction-tree">
             <div class="section-head">
                 <div class="interaction-tree-head-1">
-                    <h1>N/A</h1>
+                    <h1 id="reqrem-interaction-tree">N/A</h1>
                     <p>ausstehend</p>
                 </div>
                 <div class="interaction-tree-head-2">
@@ -275,25 +275,6 @@
 </main>
 <aside>
     <div id="overlayContainer" class="overlay-container">
-        <!-- Overlay: Create Events -->
-        <div id="overlayCreateEvent" class="overlay">
-            <div class="overlay-headline">
-                <div>
-                    <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
-                    <h3>Neues Event erstellen</h3>
-                </div>
-                <div class="btnCloseOverlay">
-                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
-                </div>
-            </div>
-            <div>
-                <p>Name</p>
-                <input id="inputEventName" type="text">
-            </div>
-            <div class="overlay-submit">
-                <img id="btnCreateEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
-            </div>
-        </div>
         <!-- Overlay: Profile -->
         <div id="overlayProfile" class="overlay">
             <div class="overlay-headline">

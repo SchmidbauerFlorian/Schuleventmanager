@@ -1,5 +1,6 @@
 const eventsDropdown = document.getElementById("dropdownEventsBtn");
 const profileBtn = document.getElementById("btnProfile");
+const btnSEM = document.getElementById("btnSEM");
 const logoutBtn = document.getElementById("btnLogout");
 const toggleModeBtn = document.getElementById("toggleMode");
 
@@ -16,11 +17,6 @@ toggleModeBtn.addEventListener("click", () => {
             window.location.href = '/teilnehmen';
         }
 });
-document.querySelectorAll('.btnCloseOverlay').forEach(el => {
-  el.addEventListener('click', () => {
-    closeOverlay();
-  });
-});
 eventsDropdown.addEventListener("click", (e) => {
   e.stopPropagation();
   openDropdown();
@@ -29,15 +25,25 @@ profileBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     openOverlay("profile");
 });
+btnSEM.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openOverlay("SEM");
+});
 logoutBtn.addEventListener("click", () => {
   window.location.href = `/logout`;
+});
+
+document.getElementById("overlayContainer").addEventListener("click", (e) => {
+    e.stopPropagation();
+});
+document.querySelectorAll('.btnCloseOverlay').forEach(el => {
+  el.addEventListener('click', () => {
+    closeOverlay();
+  });
 });
 document.addEventListener('click', () => {
     closeOverlay();
     closeDropdown();
-});
-document.getElementById("overlayContainer").addEventListener("click", (e) => {
-    e.stopPropagation();
 });
 window.addEventListener('scroll', () => {
   const nearBottom =
@@ -96,6 +102,17 @@ export function openOverlay(overlayId) {
     overlayContainer.style.height = "356px";
   } else if (overlayId === "profile") {
     overlay = document.getElementById("overlayProfile");
+    overlayContainer.style.height = "536px";
+  } else if (overlayId === "delete-event") {
+    const eventName = document.getElementById("eventName").innerHTML;
+    const deleteEventText = document.getElementById("deleteEventText");
+
+    deleteEventText.innerHTML = `Zum löschen '${eventName}' in das Feld eintippen und bestätigen`;
+
+    overlay = document.getElementById("overlayDeleteEvent");
+    overlayContainer.style.height = "356px";
+  } else if (overlayId === "SEM") {
+    overlay = document.getElementById("overlaySEM");
     overlayContainer.style.height = "536px";
   }
 
@@ -309,4 +326,18 @@ export function updateInteractionStatistics(stats){
     statsInpreqGraph.style.height = `${inpreqRatioInPixel}px`;
     statsInpremGraph.style.height = `${inpremRatioInPixel}px`;
     statsReqremGraph.style.height = `${reqremRatioInPixel}px`;
+};
+export function updateInteractionTree(requiredFields, requiredRemaining){
+    const interactionTreeImg = document.getElementById("interactionTreeImg");
+    const interactionTreeText = document.getElementById("reqrem-interaction-tree");
+
+    const completed = requiredFields - requiredRemaining;
+    const requiredCompletedRatio = completed / requiredFields;
+
+    const minHeight = 144;
+    const maxHeight = 432;
+
+    const height = minHeight + (requiredCompletedRatio * (maxHeight - minHeight));
+    interactionTreeImg.style.height = `${height}px`;
+    interactionTreeText.textContent = requiredRemaining;
 };

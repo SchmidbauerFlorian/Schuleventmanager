@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-from services.event_service import create_event, get_events
+from services.event_service import create_event, delete_event, get_events
 from services.permission_service import can_plan
 import os
 import msal 
@@ -96,6 +96,12 @@ def api_get_events():
     user_id = user.get("id")
     events = get_events(user_id)
     return jsonify(events), 200
+
+@app.route('/api/events', methods=['DELETE'])
+def api_delete_event():
+    data = request.get_json()
+    event = delete_event(data["eventName"])
+    return jsonify(event), 200
 
 if __name__ == '__main__':
     app.run(host='localhost', port=5000, debug=True)
