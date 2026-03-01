@@ -2,11 +2,11 @@
 
 {% block body %}
 <header>
-    <div id="btnSEM">
+    <div class="clickable" id="btnSEM">
         <img src="{{ url_for('static', filename='assets/images/sem-logo.svg') }}" alt="Schuleventmanager Logo">
         <h3>Schuleventmanager</h3>
     </div>
-    <div id="btnProfile">
+    <div class="clickable" id="btnProfile">
         <h3>{{ user.displayName }}</h3>
         <img src="{{ url_for('static', filename='assets/images/logout.svg') }}" alt="Logout Icon">
     </div>
@@ -24,7 +24,7 @@
         </div>
         <div class="section-body-allgemein">
             <div>
-                <div id="dropdownEventsBtn" class="button-light button-wide">
+                <div id="dropdownEventsBtn" class="button-light button-wide clickable">
                     <div id="dropdownEvents" class="dropdown-container">
                         <div class="dropdown-item">
                             <img src="{{ url_for('static', filename='assets/images/ticket.svg') }}" alt="Ticket Icon">
@@ -39,13 +39,13 @@
                         <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                     </div>
                 </div>
-                <div id="btnCreateEvent" class="button-dark">
+                <div id="btnCreateEvent" class="button-dark clickable">
                     <p>Neues Event erstellen</p>
                     <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
                 </div>
             </div>
             <div>
-                <div id="toggleMode" class="button-light" data-current-mode="planen">
+                <div id="toggleMode" class="button-light clickable" data-current-mode="planen">
                     <div>
                         <img src="{{ url_for('static', filename='assets/images/compass.svg') }}" alt="Compass Icon">
                         <p>Planen</p>
@@ -82,7 +82,7 @@
                     <h2 id="eventDuration">N/A</h2>
                 </div>
                 <div>
-                    <div id="btnDeleteEvent" class="button-red">
+                    <div id="btnDeleteEvent" class="button-red clickable">
                         <div>
                             <p>Löschen</p>
                         </div>
@@ -112,11 +112,11 @@
                     </div>
                 </div>
                 <div class="button-container">
-                    <div class="button-dark">
+                    <div class="button-dark clickable">
                         <p>Popup anzeigen</p>
                         <img src="{{ url_for('static', filename='assets/images/popup.svg') }}" alt="Popup Icon">
                     </div>
-                    <div class="button-dark">
+                    <div class="button-dark clickable">
                         <p>Email versenden</p>
                         <img src="{{ url_for('static', filename='assets/images/mail.svg') }}" alt="Mail Icon">
                     </div>
@@ -318,8 +318,8 @@
             </div>
         </div>
         <div class="section-footer">
-            <img src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
-            <img src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
+            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
+            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
         </div>
     </section>
     <section class="section-event">
@@ -367,8 +367,8 @@
             </div>
         </div>
         <div class="section-footer">
-            <img src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
-            <img src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
+            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
+            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
         </div>
     </section>
 </main>
@@ -381,8 +381,8 @@
                     <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
                     <h3>Neues Event erstellen</h3>
                 </div>
-                <div class="btnCloseOverlay">
-                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                <div class="clickable btnCloseOverlay">
+                    <img class="clickable" id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
                 </div>
             </div>
             <div>
@@ -390,7 +390,7 @@
                 <input id="inputEventName" type="text">
             </div>
             <div class="overlay-submit">
-                <img id="btnCreateEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
+                <img class="clickable" id="btnCreateEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
             </div>
         </div>
         <!-- Overlay: Delete Events -->
@@ -400,8 +400,8 @@
                     <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
                     <h3>Event löschen</h3>
                 </div>
-                <div class="btnCloseOverlay">
-                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                <div class="clickable btnCloseOverlay">
+                    <img class="clickable" id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
                 </div>
             </div>
             <div>
@@ -409,7 +409,7 @@
                 <input id="inputEventNameDelete" type="text">
             </div>
             <div class="overlay-submit">
-                <img id="btnDeleteEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
+                <img class="clickable" id="btnDeleteEventSubmit" src="{{ url_for('static', filename='assets/images/overlay-submit.svg') }}" alt="Submit Icon">
             </div>
         </div>
         <!-- Overlay: Profile -->
@@ -419,8 +419,8 @@
                     <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
                     <h3>Profil</h3>
                 </div>
-                <div class="btnCloseOverlay">
-                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                <div class="clickable btnCloseOverlay">
+                    <img class="clickable" id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
                 </div>
             </div>
             <div class="profile-overlay-body">
@@ -432,7 +432,7 @@
                     <p>Email</p>
                     <h2 class="break-line">{{ user.mail }}</h2>
                 </div>
-                <div id="btnLogout" class="button-dark">
+                <div id="btnLogout" class="button-dark clickable">
                     <p>Abmelden</p>
                     <img src="{{ url_for('static', filename='assets/images/logout-button.svg') }}" alt="Logout Icon">
                 </div>
@@ -445,8 +445,8 @@
                     <img src="{{ url_for('static', filename='assets/images/overlay-logo.svg') }}" alt="Overlay Icon">
                     <h3>Schuleventmanager</h3>
                 </div>
-                <div class="btnCloseOverlay">
-                    <img id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
+                <div class="clickable btnCloseOverlay">
+                    <img class="clickable" id="closeOverlay" src="{{ url_for('static', filename='assets/images/overlay-close.svg') }}" alt="Close Icon">
                 </div>
             </div>
             <div class="sem-overlay-body">

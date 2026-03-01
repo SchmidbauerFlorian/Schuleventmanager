@@ -79,12 +79,18 @@ header div{
     display: flex;
     align-items: center;
     gap: calc(var(--space) * 4);
-    cursor: pointer;
 }
 @media (max-width: 1366px) {
     body{
         width: calc(100% - (var(--space) * 4 * 2));
     }
+}
+.clickable{
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+.clickable:hover{
+    transform: scale(1.02);
 }
 .button-light, .button-dark, .button-red{
     width: calc(var(--space) * 20);
@@ -94,7 +100,7 @@ header div{
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space);
-    cursor: pointer;
+    transition: transform 0.2s ease;
 }
 .button-light{
     background-color: var(--color-tertiary);
@@ -163,7 +169,6 @@ section{
     display: flex;
     align-items: center;
     gap: var(--space);
-    cursor: pointer;
 }
 article{
     display: flex;
@@ -193,8 +198,6 @@ footer{
     
     width: 160px;
     height: 160px;
-
-    cursor: pointer;
 
     transition: width 0.5s ease, height 0.5s ease, opacity 0.2s ease, transform 0.2s ease;
 }
@@ -242,10 +245,6 @@ footer{
     display: flex;
     justify-content: flex-end;
     margin-top: calc(var(--space) * 6);
-    cursor: pointer;
-}
-.btnCloseOverlay{
-    cursor: pointer;
 }
 .overlay .profile-overlay-body{
     display: flex;
@@ -447,9 +446,6 @@ footer{
     justify-content: space-between;
     padding-top: calc(var(--space) * 2);
     padding-bottom: calc(var(--space) * 4);
-}
-.section-footer > img{
-    cursor: pointer;
 }
 
 
@@ -685,7 +681,6 @@ footer{
     cursor: default;
 }
 #btnStartApp{
-    cursor: pointer;
     animation: go 3s infinite;
 }
 @keyframes go {
