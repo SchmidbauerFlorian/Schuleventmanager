@@ -1,4 +1,5 @@
 from datetime import datetime
+from db import queries
 
 def delete_event(event_name):
     return "Event '{}' deleted successfully".format(event_name)

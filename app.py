@@ -1,10 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from services.event_service import create_event, delete_event, get_events
 from services.permission_service import can_plan
-import os
-import msal 
-import uuid
-import requests
+import os, msal, uuid, requests
 import config
 
 

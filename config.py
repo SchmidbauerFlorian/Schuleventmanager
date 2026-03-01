@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_USER = os.getenv("DB_USER", "event_app")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "secret")
-DB_NAME = os.getenv("DB_NAME", "events")
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME = os.getenv("DB_NAME", "schuleventmanager")
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
