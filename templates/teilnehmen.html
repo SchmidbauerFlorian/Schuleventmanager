@@ -293,7 +293,7 @@
                 </div>
                 <div>
                     <p>Email</p>
-                    <h2 class="break-line">{{ user.mail }}</h2>
+                    <h2 class="text-mail break-line">{{ user.mail }}</h2>
                 </div>
                 <div id="btnLogout" class="button-dark clickable">
                     <p>Abmelden</p>
@@ -303,6 +303,11 @@
         </div>
         <img id="overlay-deer" src="{{ url_for('static', filename='assets/images/overlay-deer.svg') }}" alt="Deer Image">
     </div>
+    <!-- Message Box -->
+     <div id="message-box">
+        <img src="{{ url_for('static', filename='assets/images/alert-triangle.svg') }}" alt="Message Box Icon">
+        <p id="message-box-text" class="text-bold">Message Box Test-Text</p>
+     </div>
 </aside>
 <footer>
 </footer>

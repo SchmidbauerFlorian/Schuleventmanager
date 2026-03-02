@@ -13,9 +13,14 @@
   display: none;
 }
 :root{
+    /*
     --color-primary: #404040;
     --color-secondary: #bfbfbf;
     --color-tertiary: #d9d9d9;
+    */
+    --color-primary: #282828;
+    --color-secondary: #e8e8e8;
+    --color-tertiary: #ffffff;
     --color-primary-highlight: #d00000;
     --color-secondary-highlight: #b80000;
     --color-tertiary-highlight: #9e0000;
@@ -266,6 +271,9 @@ footer{
     word-break: break-all;
     max-height: calc(var(--space) * 8);
     overflow: hidden;
+}
+.overlay .text-mail{
+    font-size: 2rem;
 }
 #btnLogout{
     width: 100%;
@@ -669,6 +677,7 @@ footer{
     display: flex;
     justify-content: space-between;
     gap: calc(var(--space) * 2);
+    margin-bottom: calc(var(--space) * 2);
     width: 100%;
 }
 .welcome-footer-container > div{
@@ -682,6 +691,32 @@ footer{
 }
 #btnStartApp{
     animation: go 3s infinite;
+}
+#message-box{
+    position: fixed;
+    width: 672px;
+
+    bottom: calc(var(--space) * 4);
+    right: calc(var(--space) * 4);
+
+    border-radius: calc(var(--space) * 2);
+    padding: calc(var(--space) * 2);
+
+    background: rgb(217 217 217 / 20%);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+
+    display: flex;
+    align-items: center;
+    gap: var(--space);
+
+    opacity: 0;
+}
+@keyframes messageBoxShow {
+  0% { transform: translateY(100%); opacity: 0; }
+  10% { transform: translateY(0); opacity: 1; }
+  90% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
 }
 @keyframes go {
   0% { transform: translateX(0); }

@@ -1,4 +1,4 @@
-import { loadEvents, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics } from "./main.js";
+import { showMessageBox, loadEvents, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics } from "./main.js";
 
 const createEventBtn = document.getElementById("btnCreateEvent");
 const createEventSubmitBtn = document.getElementById("btnCreateEventSubmit");
@@ -16,6 +16,13 @@ deleteEventBtn.addEventListener("click",  (e) => {
 createEventSubmitBtn.addEventListener("click", async (e) => {
   e.stopPropagation();
   closeOverlay();
+
+  const eventName = document.getElementById("inputEventName").value;
+  if(!eventName){
+    showMessageBox("Fehler: Eventname darf nicht leer sein!");
+    return;
+  }
+
   await createEvent();
 });
 deleteEventSubmitBtn.addEventListener("click", async (e) => {
@@ -26,6 +33,7 @@ deleteEventSubmitBtn.addEventListener("click", async (e) => {
   const eventName = document.getElementById("eventName").innerHTML;
 
   if(eventNameInput !== eventName){
+    showMessageBox("Fehler: Eventname stimmt nicht überein!");
     return;
   }
 
@@ -43,7 +51,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function deleteEvent() {
   const eventName = document.getElementById("inputEventNameDelete").value;
-
   await fetch("/api/events", {
     method: "DELETE",
     headers: {"Content-Type": "application/json"},
