@@ -424,6 +424,7 @@ BEGIN
     DECLARE v_idx INT;
     DECLARE v_found_idx INT;
     DECLARE v_val TEXT;
+    DECLARE v_instance_id INT;
     DECLARE done INT DEFAULT FALSE;
     
     DECLARE cur_attrs CURSOR FOR 
@@ -442,7 +443,7 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attributes and values length mismatch';
     END IF;
 
-    SET p_instance_id = NEXTVAL(seq_entity_instance_id);
+    SET v_instance_id = NEXTVAL(seq_entity_instance_id);
 
     OPEN cur_attrs;
     read_loop: LOOP
@@ -463,7 +464,7 @@ BEGIN
         IF v_found_idx != -1 THEN
             SET v_val = get_list_element(p_values, v_found_idx);
             INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
-            VALUES (v_attr_id, v_val, p_instance_id);
+            VALUES (v_attr_id, v_val, v_instance_id);
         ELSE
             CLOSE cur_attrs;
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Missing attribute in input';
@@ -860,7 +861,22 @@ DELIMITER ;
 -- ---------------------------------------------------------------------------
 -- 1. USERS (MS Graph data)
 -- ---------------------------------------------------------------------------
-
+/*
+SET FOREIGN_KEY_CHECKS = 0;
+TRUNCATE TABLE t_relation_values;
+TRUNCATE TABLE t_relation_participant;
+TRUNCATE TABLE t_relation;
+TRUNCATE TABLE t_values;
+TRUNCATE TABLE t_attribute;
+TRUNCATE TABLE t_entity;
+TRUNCATE TABLE t_user_preferences;
+TRUNCATE TABLE t_preferences;
+TRUNCATE TABLE t_users;
+DROP SEQUENCE IF EXISTS seq_entity_instance_id;
+DROP SEQUENCE IF EXISTS seq_relation_instance_id;
+CREATE SEQUENCE seq_entity_instance_id;
+CREATE SEQUENCE seq_relation_instance_id;
+SET FOREIGN_KEY_CHECKS = 1;
 
 SELECT '--- 1. INSERT USERS (MS Graph) ---' AS Step;
 INSERT INTO t_users (display_name, email, job_title) VALUES
@@ -901,19 +917,22 @@ CALL create_entity_with_attributes('Room',    'name,capacity',       'VARCHAR,IN
 SELECT '--- 5. CREATE ENTITY INSTANCES ---' AS Step;
 --                                                          entity_instance_id (seq):
 -- Students
+CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1');         -- 1
+CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2');        -- 2
+CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,3');            -- 3
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1,1',         @_); -- 1
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2',        @_); -- 2
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3',           @_); -- 3
 -- Events
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1',              @_); -- 4
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2',       @_); -- 5
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3', @_); -- 6
+CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1');               -- 4
+CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2');        -- 5
+CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3');  -- 6
 -- Teachers
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1',          @_); -- 7
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2',      @_); -- 8
 -- Rooms
-CALL create_entity_instance('Room',    'name,capacity,Room_id', 'Aula,200,1',                                        @_); -- 9
-CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2',                                   @_); -- 10
+CALL create_entity_instance('Room',    'name,capacity,Room_id', 'Aula,200,1');                                         -- 9
+CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2');                                    -- 10
 
 -- ---------------------------------------------------------------------------
 -- 6. RELATION DEFINITIONS

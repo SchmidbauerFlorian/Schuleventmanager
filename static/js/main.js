@@ -3,10 +3,15 @@ const profileBtn = document.getElementById("btnProfile");
 const btnSEM = document.getElementById("btnSEM");
 const logoutBtn = document.getElementById("btnLogout");
 const toggleModeBtn = document.getElementById("toggleMode");
+const messageBox = document.getElementById("message-box");
+const messageBoxText = document.getElementById("message-box-text");
 
-
-
-
+export function showMessageBox(message) {
+    messageBoxText.textContent = message;
+    messageBox.style.animation = "none";
+    void messageBox.offsetWidth; // reflow erzwingen
+    messageBox.style.animation = "messageBoxShow 5s";
+}
 
 toggleModeBtn.addEventListener("click", () => {
   const currentMode = toggleModeBtn.dataset.currentMode;
@@ -72,6 +77,7 @@ export async function loadEvents() {
     try {
         const response = await fetch('/api/events');
         const events = await response.json();
+        console.log("[DEBUG] fetch_all_events ->", events._debug_fetch_all_events);
 
         return events;
 

@@ -6,11 +6,15 @@ def delete_event(event_name):
 
 
 def create_event(event_name):
+    queries.create_event_by_name(event_name, event_name)
     return "Event '{}' created successfully".format(event_name)
 
 
 def get_events(user_id):
+    events = queries.fetch_all_events()
+    
     event = {
+    "_debug_fetch_all_events": events,
     "current_event": {
         "id": 1,
         "name": "Wintersportwoche",
