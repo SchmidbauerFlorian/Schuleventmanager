@@ -411,8 +411,7 @@ END //
 CREATE OR REPLACE PROCEDURE create_entity_instance(
     IN p_entity_type      TEXT,
     IN p_attribute_names  TEXT,
-    IN p_values           TEXT,
-    OUT p_instance_id     INT
+    IN p_values           TEXT
 )
 BEGIN
     DECLARE v_entity_id INT;
@@ -421,6 +420,7 @@ BEGIN
     DECLARE v_attr_count INT;
     DECLARE v_attr_id INT;
     DECLARE v_attr_name_db VARCHAR(255);
+    DECLARE v_attr_is_unique BOOLEAN;
     DECLARE v_idx INT;
     DECLARE v_found_idx INT;
     DECLARE v_val TEXT;
@@ -428,7 +428,7 @@ BEGIN
     DECLARE done INT DEFAULT FALSE;
     
     DECLARE cur_attrs CURSOR FOR 
-        SELECT attribute_id, attribute_name FROM t_attribute WHERE fk_entity_id = v_entity_id;
+        SELECT attribute_id, attribute_name, is_unique FROM t_attribute WHERE fk_entity_id = v_entity_id;
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
     SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
@@ -447,7 +447,7 @@ BEGIN
 
     OPEN cur_attrs;
     read_loop: LOOP
-        FETCH cur_attrs INTO v_attr_id, v_attr_name_db;
+        FETCH cur_attrs INTO v_attr_id, v_attr_name_db, v_attr_is_unique;
         IF done THEN LEAVE read_loop; END IF;
 
         -- Find value in input list corresponding to db attribute
@@ -465,6 +465,10 @@ BEGIN
             SET v_val = get_list_element(p_values, v_found_idx);
             INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
             VALUES (v_attr_id, v_val, v_instance_id);
+        ELSEIF v_attr_is_unique THEN
+            -- PK attribute not provided: auto-fill with instance_id
+            INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
+            VALUES (v_attr_id, v_instance_id, v_instance_id);
         ELSE
             CLOSE cur_attrs;
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Missing attribute in input';
@@ -837,15 +841,13 @@ BEGIN
             CALL create_entity_instance(
                 'Teacher',
                 'name,email,uid,Teacher_id',
-                CONCAT(v_display_name, ',', v_email, ',', v_user_id, ',', v_user_id),
-                v_instance_id
+                CONCAT(v_display_name, ',', v_email, ',', v_user_id, ',', v_user_id)
             );
         ELSE
             CALL create_entity_instance(
                 'Student',
                 'name,email,class,uid,Student_id',
-                CONCAT(v_display_name, ',', v_email, ',', v_class, ',', v_user_id, ',', v_user_id),
-                v_instance_id
+                CONCAT(v_display_name, ',', v_email, ',', v_class, ',', v_user_id, ',', v_user_id)
             );
         END IF;
     END LOOP;
@@ -861,7 +863,7 @@ DELIMITER ;
 -- ---------------------------------------------------------------------------
 -- 1. USERS (MS Graph data)
 -- ---------------------------------------------------------------------------
-/*
+
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE t_relation_values;
 TRUNCATE TABLE t_relation_participant;
@@ -917,19 +919,16 @@ CALL create_entity_with_attributes('Room',    'name,capacity',       'VARCHAR,IN
 SELECT '--- 5. CREATE ENTITY INSTANCES ---' AS Step;
 --                                                          entity_instance_id (seq):
 -- Students
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1');         -- 1
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2');        -- 2
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,3');            -- 3
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1,1',         @_); -- 1
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2',        @_); -- 2
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3',           @_); -- 3
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1,1');   -- 1
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2');  -- 2
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3');       -- 3
 -- Events
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1');               -- 4
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2');        -- 5
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3');  -- 6
 -- Teachers
-CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1',          @_); -- 7
-CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2',      @_); -- 8
+CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1');                  -- 7
+CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2');                  -- 8
 -- Rooms
 CALL create_entity_instance('Room',    'name,capacity,Room_id', 'Aula,200,1');                                         -- 9
 CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2');                                    -- 10

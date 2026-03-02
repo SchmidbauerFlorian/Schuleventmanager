@@ -11,18 +11,18 @@ def fetch_all_events():
     return rows
 
 # create_entity_with_attributes (entity_type TEXT, attribute_names TEXT, p_datatypes TEXT, p_is_event BOOL)
-# create_entity_instance        (p_entity_type TEXT, attribute_names TEXT, p_values TEXT)
+# create_entity_instance        (p_entity_type TEXT, p_attribute_names TEXT, p_values TEXT)
 def create_event_by_name(eventtype: str, name: str):
+    import datetime
     conn = get_connection()
     cur = conn.cursor()
-    # Erstellt Entity-Typ + Attribte - woher kommte entity_type?
-    cur.execute("CALL create_entity_with_attributes(?, ?, ?, true)", (eventtype, "name, created_at", "VARCHAR(255), DATETIME",))
-    # Instanziierung des Entity-Typs
-    cur.execute("CALL create_entity_instance(?, 'name, created_at', ?)", (eventtype, [name, "NOW()"]))
+    # Erstellt Entity-Typ + Attribute
+    cur.execute("CALL create_entity_with_attributes(?, ?, ?, true)", (eventtype, "name,created_at", "VARCHAR,TIMESTAMP"))
+    # Instanziierung des Entity-Typs (3 IN-Parameter, kein OUT)
+    values_str = f"{name},{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    cur.execute("CALL create_entity_instance(?, ?, ?)", (eventtype, "name,created_at", values_str))
     conn.commit()
-    event_id = cur.lastrowid
     conn.close()
-    return event_id
 
 #  delete_entity_instance (p_instance_id INT)
 def delete_event_by_name(id: int):
