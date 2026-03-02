@@ -352,10 +352,67 @@ BEGIN
     END WHILE;
 END //
 
+CREATE OR REPLACE PROCEDURE create_attribute(
+    IN p_entity_type      TEXT,
+    IN p_attribute_name   VARCHAR(255),
+    IN p_datatype         VARCHAR(100)
+)
+BEGIN
+    DECLARE v_entity_id INT;
+    DECLARE v_datatype_id INT;
+    DECLARE v_attr_id INT;
+    DECLARE v_inst_id INT;
+    DECLARE done INT DEFAULT FALSE;
+
+    DECLARE cur_instances CURSOR FOR
+        SELECT DISTINCT entity_instance_id
+        FROM t_values v
+        JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+        WHERE a.fk_entity_id = v_entity_id;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    -- Validate entity
+    SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
+    IF v_entity_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Entity type not found';
+    END IF;
+
+    -- Validate datatype
+    SELECT datatype_id INTO v_datatype_id FROM t_datatype WHERE datatype = p_datatype;
+    IF v_datatype_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Datatype not found';
+    END IF;
+
+    -- Check for duplicate attribute name
+    IF EXISTS (
+        SELECT 1 FROM t_attribute
+        WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_attribute_name)
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute already exists for this entity';
+    END IF;
+
+    -- Create attribute
+    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name)
+    VALUES (v_entity_id, v_datatype_id, p_attribute_name);
+    SET v_attr_id = LAST_INSERT_ID();
+
+    -- Backfill existing instances with NULL value
+    OPEN cur_instances;
+    backfill_loop: LOOP
+        FETCH cur_instances INTO v_inst_id;
+        IF done THEN LEAVE backfill_loop; END IF;
+
+        INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
+        VALUES (v_attr_id, NULL, v_inst_id);
+    END LOOP;
+    CLOSE cur_instances;
+END //
+
 CREATE OR REPLACE PROCEDURE create_entity_instance(
     IN p_entity_type      TEXT,
     IN p_attribute_names  TEXT,
-    IN p_values           TEXT
+    IN p_values           TEXT,
+    OUT p_instance_id     INT
 )
 BEGIN
     DECLARE v_entity_id INT;
@@ -709,6 +766,91 @@ BEGIN
     DELETE FROM t_entity WHERE entity_type = p_entity_type;
 END //
 
+CREATE OR REPLACE PROCEDURE create_entity_instances_from_users(
+    IN p_filter_class VARCHAR(255),
+    IN p_filter_name  VARCHAR(255)
+)
+BEGIN
+    DECLARE v_done INT DEFAULT FALSE;
+    DECLARE v_user_id INT;
+    DECLARE v_display_name VARCHAR(255);
+    DECLARE v_email VARCHAR(255);
+    DECLARE v_job_title VARCHAR(255);
+    DECLARE v_instance_id INT;
+    DECLARE v_is_teacher BOOLEAN;
+    DECLARE v_class VARCHAR(255);
+    DECLARE v_existing_count INT;
+    DECLARE v_target_entity VARCHAR(255);
+
+    DECLARE cur_users CURSOR FOR
+        SELECT user_id, display_name, email, job_title FROM t_users;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = TRUE;
+
+    OPEN cur_users;
+    user_loop: LOOP
+        FETCH cur_users INTO v_user_id, v_display_name, v_email, v_job_title;
+        IF v_done THEN LEAVE user_loop; END IF;
+
+        -- Bestimme ob Lehrer oder Schüler
+        IF v_job_title IS NULL OR LOWER(v_job_title) = 'teacher' THEN
+            SET v_is_teacher = TRUE;
+            SET v_class = NULL;
+        ELSE
+            SET v_is_teacher = FALSE;
+            SET v_class = v_job_title;  -- job_title enthält die Klasse
+        END IF;
+
+        -- Filter nach Klasse/Typ
+        IF p_filter_class IS NOT NULL THEN
+            IF LOWER(p_filter_class) = 'teacher' AND v_is_teacher = FALSE THEN
+                ITERATE user_loop;
+            END IF;
+            IF LOWER(p_filter_class) != 'teacher' AND (v_is_teacher = TRUE OR LOWER(v_class) != LOWER(p_filter_class)) THEN
+                ITERATE user_loop;
+            END IF;
+        END IF;
+
+        -- Filter nach Name
+        IF p_filter_name IS NOT NULL THEN
+            IF v_display_name NOT LIKE CONCAT('%', p_filter_name, '%') THEN
+                ITERATE user_loop;
+            END IF;
+        END IF;
+
+        -- Duplikat-Prüfung: Existiert bereits eine Instanz mit derselben E-Mail?
+        SET v_target_entity = IF(v_is_teacher, 'Teacher', 'Student');
+        SELECT COUNT(*) INTO v_existing_count
+        FROM t_values v
+        JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+        JOIN t_entity e ON a.fk_entity_id = e.entity_id
+        WHERE e.entity_type = v_target_entity
+          AND LOWER(a.attribute_name) = 'email'
+          AND LOWER(v.value) = LOWER(v_email);
+
+        IF v_existing_count > 0 THEN
+            ITERATE user_loop;
+        END IF;
+
+        -- Entitätsinstanz erstellen
+        IF v_is_teacher THEN
+            CALL create_entity_instance(
+                'Teacher',
+                'name,email,uid,Teacher_id',
+                CONCAT(v_display_name, ',', v_email, ',', v_user_id, ',', v_user_id),
+                v_instance_id
+            );
+        ELSE
+            CALL create_entity_instance(
+                'Student',
+                'name,email,class,uid,Student_id',
+                CONCAT(v_display_name, ',', v_email, ',', v_class, ',', v_user_id, ',', v_user_id),
+                v_instance_id
+            );
+        END IF;
+    END LOOP;
+    CLOSE cur_users;
+END //
+
 DELIMITER ;
 
 -- ============================================================================
@@ -718,7 +860,8 @@ DELIMITER ;
 -- ---------------------------------------------------------------------------
 -- 1. USERS (MS Graph data)
 -- ---------------------------------------------------------------------------
-/*
+
+
 SELECT '--- 1. INSERT USERS (MS Graph) ---' AS Step;
 INSERT INTO t_users (display_name, email, job_title) VALUES
     ('Max Mustermann',  'mm@htlwy.com',    'Student'),
@@ -747,9 +890,9 @@ INSERT INTO t_user_preferences (user_id, preference_id) VALUES
 -- 4. ENTITY TYPES
 -- ---------------------------------------------------------------------------
 SELECT '--- 4. CREATE ENTITY TYPES ---' AS Step;
-CALL create_entity_with_attributes('Student', 'name,email,class',    'VARCHAR,VARCHAR,VARCHAR', FALSE);
+CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE);
 CALL create_entity_with_attributes('Event',   'name,date,location',  'VARCHAR,DATE,VARCHAR',   TRUE);
-CALL create_entity_with_attributes('Teacher', 'name,subject,email',  'VARCHAR,VARCHAR,VARCHAR', FALSE);
+CALL create_entity_with_attributes('Teacher', 'name,email,uid',  'VARCHAR,VARCHAR,INTEGER', FALSE);
 CALL create_entity_with_attributes('Room',    'name,capacity',       'VARCHAR,INTEGER',         FALSE);
 
 -- ---------------------------------------------------------------------------
@@ -758,16 +901,16 @@ CALL create_entity_with_attributes('Room',    'name,capacity',       'VARCHAR,IN
 SELECT '--- 5. CREATE ENTITY INSTANCES ---' AS Step;
 --                                                          entity_instance_id (seq):
 -- Students
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1',         @_); -- 1
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2',        @_); -- 2
-CALL create_entity_instance('Student', 'name,email,class,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,3',           @_); -- 3
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1,1',         @_); -- 1
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2',        @_); -- 2
+CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3',           @_); -- 3
 -- Events
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1',              @_); -- 4
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2',       @_); -- 5
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3', @_); -- 6
 -- Teachers
-CALL create_entity_instance('Teacher', 'name,subject,email,Teacher_id', 'Mr. Smith,Math,smith@htlwy.com,1',          @_); -- 7
-CALL create_entity_instance('Teacher', 'name,subject,email,Teacher_id', 'Frau Huber,Physics,huber@htlwy.com,2',      @_); -- 8
+CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1',          @_); -- 7
+CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2',      @_); -- 8
 -- Rooms
 CALL create_entity_instance('Room',    'name,capacity,Room_id', 'Aula,200,1',                                        @_); -- 9
 CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2',                                   @_); -- 10
@@ -797,50 +940,85 @@ CALL add_relation_participant(3, 'Room',  0, NULL);
 -- 7. RELATION INSTANCES
 -- ---------------------------------------------------------------------------
 -- value_id mapping (t_values):
---   Student_id: Max=1,  Anna=5,  Lukas=9
---   Event_id:   Skikurs=13, ScienceFair=17, TdoT=21
---   Teacher_id: Smith=25, Huber=29
---   Room_id:    Aula=33, EDV-Saal1=36
---   reg_date values: 39,40,41,42,43
---   hours values:    44,45
+--   Student_id: Max=1,  Anna=6,  Lukas=11
+--   Event_id:   Skikurs=16, ScienceFair=20, TdoT=24
+--   Teacher_id: Smith=28, Huber=32
+--   Room_id:    Aula=36, EDV-Saal1=39
+--   reg_date values: 42,43,44,45,46
+--   hours values:    47,48
 SELECT '--- 7. CREATE RELATION INSTANCES ---' AS Step;
 
--- participates_in: Max -> Skikurs        (reg_date=2025-12-25, value_id=39)
+-- participates_in: Max -> Skikurs        (reg_date=2025-12-25, value_id=42)
 CALL create_relation_attribute_value(1, 'reg_date', '2025-12-25', @_);
-CALL create_relation_instance(1, '1,13,39', @_);
+CALL create_relation_instance(1, '1,16,42', @_);
 
--- participates_in: Anna -> Skikurs       (reg_date=2026-01-15, value_id=40)
+-- participates_in: Anna -> Skikurs       (reg_date=2026-01-15, value_id=43)
 CALL create_relation_attribute_value(1, 'reg_date', '2026-01-15', @_);
-CALL create_relation_instance(1, '5,13,40', @_);
+CALL create_relation_instance(1, '6,16,43', @_);
 
--- participates_in: Max -> Science Fair   (reg_date=2025-05-10, value_id=41)
+-- participates_in: Max -> Science Fair   (reg_date=2025-05-10, value_id=44)
 CALL create_relation_attribute_value(1, 'reg_date', '2025-05-10', @_);
-CALL create_relation_instance(1, '1,17,41', @_);
+CALL create_relation_instance(1, '1,20,44', @_);
 
--- participates_in: Lukas -> Science Fair (reg_date=2025-05-12, value_id=42)
+-- participates_in: Lukas -> Science Fair (reg_date=2025-05-12, value_id=45)
 CALL create_relation_attribute_value(1, 'reg_date', '2025-05-12', @_);
-CALL create_relation_instance(1, '9,17,42', @_);
+CALL create_relation_instance(1, '11,20,45', @_);
 
--- participates_in: Anna -> TdoT         (reg_date=2026-03-20, value_id=43)
+-- participates_in: Anna -> TdoT         (reg_date=2026-03-20, value_id=46)
 CALL create_relation_attribute_value(1, 'reg_date', '2026-03-20', @_);
-CALL create_relation_instance(1, '5,21,43', @_);
+CALL create_relation_instance(1, '6,24,46', @_);
 
--- organizes: Smith -> Science Fair       (hours=10, value_id=44)
+-- organizes: Smith -> Science Fair       (hours=10, value_id=47)
 CALL create_relation_attribute_value(2, 'hours', '10', @_);
-CALL create_relation_instance(2, '25,17,44', @_);
+CALL create_relation_instance(2, '28,20,47', @_);
 
--- organizes: Huber -> TdoT              (hours=6, value_id=45)
+-- organizes: Huber -> TdoT              (hours=6, value_id=48)
 CALL create_relation_attribute_value(2, 'hours', '6', @_);
-CALL create_relation_instance(2, '29,21,45', @_);
+CALL create_relation_instance(2, '32,24,48', @_);
 
 -- takes_place_in: Skikurs -> Aula
-CALL create_relation_instance(3, '13,33', @_);
+CALL create_relation_instance(3, '16,36', @_);
 
 -- takes_place_in: Science Fair -> Aula
-CALL create_relation_instance(3, '17,33', @_);
+CALL create_relation_instance(3, '20,36', @_);
 
 -- takes_place_in: TdoT -> EDV-Saal 1
-CALL create_relation_instance(3, '21,36', @_);
+CALL create_relation_instance(3, '24,39', @_);
 
 SELECT '--- FILL_DB COMPLETED ---' AS Message;
-*/
+
+
+-- ============================================================================
+-- TEST: create_entity_instances_from_users
+-- Requires Entity-Types 'Student' and 'Teacher' to already exist (see Part 3 above)
+-- ============================================================================
+
+-- Insert test users into t_users
+INSERT INTO t_users (display_name, email, job_title) VALUES
+    ('Elena Fischer',   'ef@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
+    ('Jonas Weber',     'jw@htlwy.com',     '4BHIT'),    -- Student in 4BHIT
+    ('Maria Gruber',    'mg@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
+    ('Dr. Berger',      'berger@htlwy.com',  'Teacher'),  -- Teacher
+    ('Prof. Lang',      'lang@htlwy.com',    NULL);       -- Teacher (job_title NULL)
+
+-- ---------------------------------------------------------------------------
+-- Testaufruf 1: Nur Schüler der Klasse 5AHIT importieren
+--   Erwartet: Elena Fischer und Maria Gruber werden als Student-Instanzen erstellt
+-- ---------------------------------------------------------------------------
+CALL create_entity_instances_from_users('5AHIT', NULL);
+
+-- ---------------------------------------------------------------------------
+-- Testaufruf 2: Nur Lehrer importieren, gefiltert nach Name 'Berger'
+--   Erwartet: Nur Dr. Berger wird als Teacher-Instanz erstellt
+-- ---------------------------------------------------------------------------
+CALL create_entity_instances_from_users('Teacher', 'Berger');
+
+-- ---------------------------------------------------------------------------
+-- Testaufruf 3: Alle User ohne Filter importieren
+--   Erwartet: Alle 5 User werden als Instanzen erstellt (3 Students, 2 Teachers)
+--   ACHTUNG: Vorherige Aufrufe ggf. vorher rückgängig machen, um Duplikate zu vermeiden
+-- ---------------------------------------------------------------------------
+CALL create_entity_instances_from_users(NULL, NULL);
+
+-- Test 
+CALL create_attribute('Student', 'phone', 'VARCHAR');

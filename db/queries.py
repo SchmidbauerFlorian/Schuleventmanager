@@ -33,3 +33,11 @@ def delete_event_by_name(id: int):
     affected = cur.rowcount
     conn.close()
     return affected
+
+def create_selected_from_users_table(filter_class: str, filter_name: str):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("CALL create_entity_instances_from_users(?, ?)", (filter_class, filter_name))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
