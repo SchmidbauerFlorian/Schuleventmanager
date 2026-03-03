@@ -622,6 +622,25 @@ BEGIN
     END IF;
 END //
 
+CREATE OR REPLACE PROCEDURE get_entity_instance_by_id(IN p_entity_instance_id INT, IN p_isEvent BOOLEAN)
+BEGIN
+    IF p_isEvent THEN
+        SELECT v.entity_instance_id, a.attribute_name, v.value
+        FROM t_values v
+        JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+        JOIN t_entity e ON a.fk_entity_id = e.entity_id
+        WHERE e.isEvent = TRUE AND v.entity_instance_id = p_entity_instance_id
+        ORDER BY v.entity_instance_id, a.attribute_name;
+    ELSE
+        SELECT v.entity_instance_id, a.attribute_name, v.value
+        FROM t_values v
+        JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+        JOIN t_entity e ON a.fk_entity_id = e.entity_id
+        WHERE e.isEvent = FALSE AND v.entity_instance_id = p_entity_instance_id
+        ORDER BY v.entity_instance_id, a.attribute_name;
+    END IF;
+END //
+
 CREATE OR REPLACE PROCEDURE get_relation_data(IN p_relation_id INT)
 BEGIN
     SELECT 
