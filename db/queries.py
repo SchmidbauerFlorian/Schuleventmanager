@@ -41,3 +41,12 @@ def create_selected_from_users_table(filter_class: str, filter_name: str):
     rows = cur.fetchall()
     conn.close()
     return rows
+
+#   get_entity_instance_by_id(IN p_entity_instance_id INT, IN p_isEvent BOOLEAN)
+def get_entity_instances_by_id(id: int, is_event: bool = True):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("CALL get_entity_instance_by_id(?,?)", (id, is_event))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
