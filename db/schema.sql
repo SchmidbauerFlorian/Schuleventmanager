@@ -479,8 +479,9 @@ BEGIN
             INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
             VALUES (v_attr_id, v_instance_id, v_instance_id);
         ELSE
-            CLOSE cur_attrs;
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Missing attribute in input';
+            -- Attribute not provided: fill with NULL
+            INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
+            VALUES (v_attr_id, NULL, v_instance_id);
         END IF;
     END LOOP;
     CLOSE cur_attrs;
@@ -704,8 +705,7 @@ BEGIN
 END //
 
 
--- =====> GEDI
--- Returns attribute statistics per event instance:
+-- =====> Claude Opus 4.6 - Datum 3.3.2026
 -- counts of isInputField, isRessource, isSingularRessource, isRequired attributes
 -- Includes BOTH entity attributes (direct) AND relation attributes (via relations)
 -- so that e.g. nimmtTeil (isInputField on a relation) appears in cnt_input_fields
@@ -854,6 +854,60 @@ BEGIN
 END //
 
 -- --- FROM crud_update.sql ---
+CREATE OR REPLACE PROCEDURE update_attribute(
+    IN p_entity_type          TEXT,
+    IN p_old_attribute_name   VARCHAR(255),
+    IN p_new_attribute_name   VARCHAR(255),
+    IN p_new_datatype         VARCHAR(100)
+)
+BEGIN
+    DECLARE v_entity_id INT;
+    DECLARE v_attr_id INT;
+    DECLARE v_new_datatype_id INT;
+
+    -- Validate entity
+    SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
+    IF v_entity_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Entity type not found';
+    END IF;
+
+    -- Find attribute
+    SELECT attribute_id INTO v_attr_id
+    FROM t_attribute
+    WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_old_attribute_name);
+
+    IF v_attr_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute not found for this entity';
+    END IF;
+
+    -- Prevent renaming of PK attribute
+    IF (SELECT is_unique FROM t_attribute WHERE attribute_id = v_attr_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot modify primary key attribute';
+    END IF;
+
+    -- Check for duplicate name (only if name actually changes)
+    IF LOWER(p_old_attribute_name) != LOWER(p_new_attribute_name) THEN
+        IF EXISTS (
+            SELECT 1 FROM t_attribute
+            WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_new_attribute_name)
+        ) THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An attribute with that name already exists';
+        END IF;
+    END IF;
+
+    -- Validate new datatype
+    SELECT datatype_id INTO v_new_datatype_id FROM t_datatype WHERE datatype = p_new_datatype;
+    IF v_new_datatype_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Datatype not found';
+    END IF;
+
+    -- Update attribute
+    UPDATE t_attribute
+    SET attribute_name = p_new_attribute_name,
+        fk_datatype_id = v_new_datatype_id
+    WHERE attribute_id = v_attr_id;
+END //
+
 CREATE OR REPLACE PROCEDURE update_entity_instance(
     IN p_instance_id      INT,
     IN p_attribute_names  TEXT,
@@ -958,6 +1012,38 @@ BEGIN
     CLOSE cur_rel_vals;
 
     DELETE FROM t_relation_values WHERE relation_instance_id = p_rel_instance_id;
+END //
+
+CREATE OR REPLACE PROCEDURE delete_attribute(
+    IN p_entity_type      TEXT,
+    IN p_attribute_name   VARCHAR(255)
+)
+BEGIN
+    DECLARE v_entity_id INT;
+    DECLARE v_attr_id INT;
+
+    -- Validate entity
+    SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
+    IF v_entity_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Entity type not found';
+    END IF;
+
+    -- Find attribute
+    SELECT attribute_id INTO v_attr_id
+    FROM t_attribute
+    WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_attribute_name);
+
+    IF v_attr_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute not found for this entity';
+    END IF;
+
+    -- Prevent deletion of PK attribute
+    IF (SELECT is_unique FROM t_attribute WHERE attribute_id = v_attr_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot delete primary key attribute';
+    END IF;
+
+    -- Delete attribute (CASCADE removes related t_values, t_relation_participant, t_relation_values)
+    DELETE FROM t_attribute WHERE attribute_id = v_attr_id;
 END //
 
 CREATE OR REPLACE PROCEDURE delete_entity_type(IN p_entity_type TEXT)

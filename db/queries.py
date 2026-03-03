@@ -52,3 +52,53 @@ def get_entity_instance_by_id(id: int, is_event: bool = True):
     rows = cur.fetchall()
     conn.close()
     return rows
+
+def create_attribute(entity_type: str, attribute_name: str, datatype: str, is_event: bool = False):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL create_attribute(?, ?, ?, ?)", (entity_type, attribute_name, datatype, is_event))
+    conn.commit()
+    conn.close()
+
+def delete_attribute(entity_type: str, attribute_name: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL delete_attribute(?, ?)", (entity_type, attribute_name))
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
+
+def update_attribute(entity_type: str, old_attribute_name: str, new_attribute_name: str, new_datatype: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL update_attribute(?, ?, ?, ?)", (entity_type, old_attribute_name, new_attribute_name, new_datatype))
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
+
+def create_entity_instance(entity_type: str, attribute_names: str, values: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL create_entity_instance(?, ?, ?)", (entity_type, attribute_names, values))
+    conn.commit()
+    conn.close()
+
+def update_entity_instance(instance_id: int, attribute_names: str, new_values: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL update_entity_instance(?, ?, ?)", (instance_id, attribute_names, new_values))
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
+
+def delete_entity_instance(instance_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("CALL delete_entity_instance(?)", (instance_id,))
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
