@@ -6,6 +6,7 @@ def fetch_all_events():
     cur = conn.cursor(dictionary=True)
     #                          ('' -> entity_type, true -> isEvent)
     cur.execute("CALL get_entity_instances('', true)") 
+    cur.execute("CALL get_event_attribute_statistics(null)")
     rows = cur.fetchall()
     conn.close()
     return rows
@@ -47,6 +48,7 @@ def get_entity_instance_by_id(id: int, is_event: bool = True):
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
     cur.execute("CALL get_entity_instance_by_id(?,?)", (id, is_event))
+    cur.execute("CALL get_event_attribute_statistics(?)", (id,))
     rows = cur.fetchall()
     conn.close()
     return rows
