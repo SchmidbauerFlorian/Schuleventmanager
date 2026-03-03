@@ -238,6 +238,7 @@
             </div>
         </section>
     </article>
+    <!--
     <section class="section-timeline">
         <div class="section-head">
             <div>
@@ -322,13 +323,14 @@
             <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
         </div>
     </section>
+    -->
     <section class="section-event">
         <div class="section-head">
             <div>
                 <img src="{{ url_for('static', filename='assets/images/ticket-event.svg') }}" alt="Event Icon">
                 <h3>Wintersportwoche</h3>
             </div>
-            <div>
+            <div class="clickable" id="btnExpandTreeView">
                 <img src="{{ url_for('static', filename='assets/images/arrow-expand.svg') }}" alt="Arrow Expand Icon">
             </div>
         </div>

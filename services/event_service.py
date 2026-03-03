@@ -12,7 +12,7 @@ def create_event(event_name):
 
 def get_events(user_id):
     events = queries.fetch_all_events()
-    
+
     event = {
     "_debug_fetch_all_events": events,
     "current_event": {
