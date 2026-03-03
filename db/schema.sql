@@ -58,10 +58,13 @@ CREATE TABLE t_attribute (
     fk_datatype_id INTEGER NOT NULL COMMENT 'Foreign key referencing datatype',
     attribute_name VARCHAR(255) NOT NULL COMMENT 'Name of the attribute',
     is_unique BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Indicates if this attribute is a unique identifier (PK)',
-    access ENUM('read', 'write', 'read/write') NOT NULL DEFAULT 'read/write' COMMENT 'Access level for this attribute',
+    access ENUM('read', 'read/write') NOT NULL DEFAULT 'read/write' COMMENT 'Access level for this attribute',
     isPrivate BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, attribute is hidden from public views',
     expirationDate DATE DEFAULT NULL COMMENT 'When elapsed, access automatically shifts to read',
     isRequired BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute must be provided on instance creation',
+    isInputField BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this is a relation input field (read/write + expirationDate)',
+    isRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute represents a resource (entity attribute)',
+    isSingularRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this relation attribute accepts only a single value',
     
     CONSTRAINT fk_attribute_entity 
         FOREIGN KEY (fk_entity_id) 
@@ -297,7 +300,8 @@ CREATE OR REPLACE PROCEDURE create_entity_with_attributes(
     IN p_entity_type      TEXT,
     IN p_attribute_names  TEXT,
     IN p_datatypes        TEXT,
-    IN p_is_event         BOOLEAN
+    IN p_is_event         BOOLEAN,
+    IN p_is_required_flags TEXT
 )
 BEGIN
     DECLARE v_entity_id INT;
@@ -308,6 +312,7 @@ BEGIN
     DECLARE v_dtype_name TEXT;
     DECLARE v_attr_len INT;
     DECLARE v_dtype_len INT;
+    DECLARE v_is_req BOOLEAN;
 
     -- Validate inputs
     IF COALESCE(TRIM(p_entity_type), '') = '' THEN
@@ -329,15 +334,18 @@ BEGIN
     INSERT INTO t_entity(entity_type, isEvent) VALUES (p_entity_type, p_is_event);
     SET v_entity_id = LAST_INSERT_ID();
 
-    -- Create PK attribute
+    -- Create PK attribute (isRessource=TRUE since it belongs to an entity)
     SELECT datatype_id INTO v_pk_datatype_id FROM t_datatype WHERE datatype = 'INTEGER';
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, is_unique)
-    VALUES (v_entity_id, v_pk_datatype_id, CONCAT(p_entity_type, '_id'), TRUE);
+    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, is_unique, isRessource)
+    VALUES (v_entity_id, v_pk_datatype_id, CONCAT(p_entity_type, '_id'), TRUE, TRUE);
 
-    -- Create other attributes
+    -- Create other attributes (all entity attributes are automatically isRessource=TRUE)
     WHILE i <= v_attr_len DO
         SET v_attr_name = get_list_element(p_attribute_names, i);
         SET v_dtype_name = get_list_element(p_datatypes, i);
+
+        -- Parse optional isRequired flag (default FALSE if list is shorter or empty)
+        SET v_is_req = IFNULL(CAST(get_list_element(p_is_required_flags, i) AS UNSIGNED), 0);
 
         SELECT datatype_id INTO v_datatype_id FROM t_datatype WHERE datatype = v_dtype_name;
 
@@ -345,8 +353,8 @@ BEGIN
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Datatype not found';
         END IF;
 
-        INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name)
-        VALUES (v_entity_id, v_datatype_id, v_attr_name);
+        INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isRessource)
+        VALUES (v_entity_id, v_datatype_id, v_attr_name, v_is_req, TRUE);
 
         SET i = i + 1;
     END WHILE;
@@ -355,7 +363,8 @@ END //
 CREATE OR REPLACE PROCEDURE create_attribute(
     IN p_entity_type      TEXT,
     IN p_attribute_name   VARCHAR(255),
-    IN p_datatype         VARCHAR(100)
+    IN p_datatype         VARCHAR(100),
+    IN p_isRequired       BOOLEAN
 )
 BEGIN
     DECLARE v_entity_id INT;
@@ -391,9 +400,9 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute already exists for this entity';
     END IF;
 
-    -- Create attribute
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name)
-    VALUES (v_entity_id, v_datatype_id, p_attribute_name);
+    -- Create attribute (entity attributes are always isRessource=TRUE)
+    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isRessource)
+    VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE);
     SET v_attr_id = LAST_INSERT_ID();
 
     -- Backfill existing instances with NULL value
@@ -470,8 +479,9 @@ BEGIN
             INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
             VALUES (v_attr_id, v_instance_id, v_instance_id);
         ELSE
-            CLOSE cur_attrs;
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Missing attribute in input';
+            -- Attribute not provided: fill with NULL
+            INSERT INTO t_values(fk_attribute_id, value, entity_instance_id)
+            VALUES (v_attr_id, NULL, v_instance_id);
         END IF;
     END LOOP;
     CLOSE cur_attrs;
@@ -532,18 +542,34 @@ BEGIN
 END //
 
 CREATE OR REPLACE PROCEDURE add_relation_attribute(
-    IN p_relation_id      INT,
-    IN p_attribute_name   VARCHAR(255),
-    IN p_datatype         VARCHAR(100)
+    IN p_relation_id          INT,
+    IN p_attribute_name       VARCHAR(255),
+    IN p_datatype             VARCHAR(100),
+    IN p_isInputField         BOOLEAN,
+    IN p_isRequired           BOOLEAN,
+    IN p_isSingularRessource  BOOLEAN,
+    IN p_expirationDate       DATE
 )
 BEGIN
     DECLARE v_datatype_id INT;
     DECLARE v_attr_id INT;
+    DECLARE v_access ENUM('read', 'read/write');
 
     SELECT datatype_id INTO v_datatype_id FROM t_datatype WHERE datatype = p_datatype;
 
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, is_unique)
-    VALUES (NULL, v_datatype_id, p_attribute_name, FALSE);
+    -- InputFields get read/write access; otherwise default read
+    SET v_access = IF(IFNULL(p_isInputField, FALSE), 'read/write', 'read');
+
+    INSERT INTO t_attribute(
+        fk_entity_id, fk_datatype_id, attribute_name, is_unique,
+        isInputField, isRequired, isSingularRessource,
+        access, expirationDate
+    )
+    VALUES (
+        NULL, v_datatype_id, p_attribute_name, FALSE,
+        IFNULL(p_isInputField, FALSE), IFNULL(p_isRequired, FALSE), IFNULL(p_isSingularRessource, FALSE),
+        v_access, p_expirationDate
+    );
     
     SET v_attr_id = LAST_INSERT_ID();
 
@@ -678,7 +704,210 @@ BEGIN
     ORDER BY r.relation_id, rv.relation_instance_id, a.attribute_name;
 END //
 
+
+-- =====> Claude Opus 4.6 - Datum 3.3.2026
+-- counts of isInputField, isRessource, isSingularRessource, isRequired attributes
+-- Includes BOTH entity attributes (direct) AND relation attributes (via relations)
+-- so that e.g. nimmtTeil (isInputField on a relation) appears in cnt_input_fields
+CREATE OR REPLACE PROCEDURE get_event_attribute_statistics(
+    IN p_event_instance_id INT
+)
+BEGIN
+    SELECT
+        sub.event_name,
+        sub.event_instance_id,
+
+        -- Attribute flag counts
+        SUM(sub.isInputField)                                       AS cnt_input_fields,
+        SUM(sub.isRessource)                                        AS cnt_ressources,
+        SUM(sub.isSingularRessource)                                AS cnt_singular_ressources,
+        SUM(sub.isRequired)                                         AS cnt_required,
+
+        -- Filled / missing based on flags
+        SUM(CASE WHEN sub.isRequired   AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_required_filled,
+        SUM(CASE WHEN sub.isRequired   AND NOT sub.is_filled THEN 1 ELSE 0 END) AS cnt_required_missing,
+        SUM(CASE WHEN sub.isInputField AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_input_fields_filled,
+        SUM(CASE WHEN sub.isRessource  AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_ressources_filled,
+        COUNT(*)                                                    AS cnt_total_attributes
+
+    FROM (
+        -- ---------------------------------------------------------------
+        -- Part 1: Direct entity attributes of the event
+        -- ---------------------------------------------------------------
+        SELECT
+            v_name.value                          AS event_name,
+            v_ev.entity_instance_id                AS event_instance_id,
+            a.attribute_id,
+            a.isInputField,
+            a.isRessource,
+            a.isSingularRessource,
+            a.isRequired,
+            (v_ev.value IS NOT NULL AND v_ev.value != '') AS is_filled
+        FROM t_values v_ev
+        JOIN t_attribute a ON v_ev.fk_attribute_id = a.attribute_id
+        JOIN t_entity   e ON a.fk_entity_id = e.entity_id
+        LEFT JOIN (
+            SELECT v2.entity_instance_id, v2.value
+            FROM t_values v2
+            JOIN t_attribute a2 ON v2.fk_attribute_id = a2.attribute_id
+            WHERE LOWER(a2.attribute_name) = 'name'
+        ) v_name ON v_name.entity_instance_id = v_ev.entity_instance_id
+        WHERE e.isEvent = TRUE
+          AND (p_event_instance_id IS NULL OR v_ev.entity_instance_id = p_event_instance_id)
+
+        UNION ALL
+
+        -- ---------------------------------------------------------------
+        -- Part 2: Relation attributes connected to the event
+        --   (e.g. reg_date, nimmtTeil, hours, room_note)
+        --   Each relation-attribute VALUE (instance) is counted individually,
+        --   so 2 participants each contributing reg_date => 2 rows.
+        -- ---------------------------------------------------------------
+        SELECT
+            v_name.value                          AS event_name,
+            v_event.entity_instance_id              AS event_instance_id,
+            a_rel.attribute_id,
+            a_rel.isInputField,
+            a_rel.isRessource,
+            a_rel.isSingularRessource,
+            a_rel.isRequired,
+            (v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
+        FROM t_relation_values rv_event
+        -- Join the event's PK value that sits in this relation instance
+        JOIN t_values     v_event  ON rv_event.fk_value_id = v_event.value_id
+        JOIN t_attribute  a_event  ON v_event.fk_attribute_id = a_event.attribute_id
+        JOIN t_entity     e        ON a_event.fk_entity_id = e.entity_id AND e.isEvent = TRUE
+        -- Find relation attribute entries in the same relation instance
+        JOIN t_relation_values rv_attr ON rv_attr.relation_instance_id = rv_event.relation_instance_id
+                                      AND rv_attr.fk_relation_id      = rv_event.fk_relation_id
+        JOIN t_attribute a_rel ON rv_attr.fk_attribute_id = a_rel.attribute_id
+                              AND a_rel.fk_entity_id IS NULL
+                              AND a_rel.attribute_name NOT LIKE 'fk\_%' ESCAPE '\\'
+        JOIN t_values v_relval ON rv_attr.fk_value_id = v_relval.value_id
+        LEFT JOIN (
+            SELECT v2.entity_instance_id, v2.value
+            FROM t_values v2
+            JOIN t_attribute a2 ON v2.fk_attribute_id = a2.attribute_id
+            WHERE LOWER(a2.attribute_name) = 'name'
+        ) v_name ON v_name.entity_instance_id = v_event.entity_instance_id
+        WHERE (p_event_instance_id IS NULL OR v_event.entity_instance_id = p_event_instance_id)
+    ) sub
+    GROUP BY sub.event_instance_id, sub.event_name
+    ORDER BY sub.event_instance_id;
+END //
+
+-- Returns individual attribute details for a specific event instance
+-- Lists each attribute with its flags and source (entity / relation)
+CREATE OR REPLACE PROCEDURE get_event_attribute_details(
+    IN p_event_instance_id INT
+)
+BEGIN
+    SELECT
+        sub2.attribute_name,
+        sub2.source,
+        sub2.isInputField,
+        sub2.isRessource,
+        sub2.isSingularRessource,
+        sub2.isRequired,
+        sub2.is_filled
+    FROM (
+        -- Direct entity attributes
+        SELECT
+            a.attribute_name,
+            'entity' AS source,
+            a.isInputField,
+            a.isRessource,
+            a.isSingularRessource,
+            a.isRequired,
+            (v_ev.value IS NOT NULL AND v_ev.value != '') AS is_filled
+        FROM t_values v_ev
+        JOIN t_attribute a ON v_ev.fk_attribute_id = a.attribute_id
+        JOIN t_entity   e ON a.fk_entity_id = e.entity_id
+        WHERE e.isEvent = TRUE
+          AND v_ev.entity_instance_id = p_event_instance_id
+
+        UNION ALL
+
+        -- Relation attributes
+        SELECT
+            a_rel.attribute_name,
+            'relation' AS source,
+            a_rel.isInputField,
+            a_rel.isRessource,
+            a_rel.isSingularRessource,
+            a_rel.isRequired,
+            MAX(v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
+        FROM t_relation_values rv_event
+        JOIN t_values     v_event  ON rv_event.fk_value_id = v_event.value_id
+        JOIN t_attribute  a_event  ON v_event.fk_attribute_id = a_event.attribute_id
+        JOIN t_entity     e        ON a_event.fk_entity_id = e.entity_id AND e.isEvent = TRUE
+        JOIN t_relation_values rv_attr ON rv_attr.relation_instance_id = rv_event.relation_instance_id
+                                      AND rv_attr.fk_relation_id      = rv_event.fk_relation_id
+        JOIN t_attribute a_rel ON rv_attr.fk_attribute_id = a_rel.attribute_id
+                              AND a_rel.fk_entity_id IS NULL
+                              AND a_rel.attribute_name NOT LIKE 'fk\_%' ESCAPE '\\'
+        JOIN t_values v_relval ON rv_attr.fk_value_id = v_relval.value_id
+        WHERE v_event.entity_instance_id = p_event_instance_id
+        GROUP BY a_rel.attribute_id, a_rel.attribute_name
+    ) sub2
+    ORDER BY sub2.source, sub2.attribute_name;
+END //
+
 -- --- FROM crud_update.sql ---
+CREATE OR REPLACE PROCEDURE update_attribute(
+    IN p_entity_type          TEXT,
+    IN p_old_attribute_name   VARCHAR(255),
+    IN p_new_attribute_name   VARCHAR(255),
+    IN p_new_datatype         VARCHAR(100)
+)
+BEGIN
+    DECLARE v_entity_id INT;
+    DECLARE v_attr_id INT;
+    DECLARE v_new_datatype_id INT;
+
+    -- Validate entity
+    SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
+    IF v_entity_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Entity type not found';
+    END IF;
+
+    -- Find attribute
+    SELECT attribute_id INTO v_attr_id
+    FROM t_attribute
+    WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_old_attribute_name);
+
+    IF v_attr_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute not found for this entity';
+    END IF;
+
+    -- Prevent renaming of PK attribute
+    IF (SELECT is_unique FROM t_attribute WHERE attribute_id = v_attr_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot modify primary key attribute';
+    END IF;
+
+    -- Check for duplicate name (only if name actually changes)
+    IF LOWER(p_old_attribute_name) != LOWER(p_new_attribute_name) THEN
+        IF EXISTS (
+            SELECT 1 FROM t_attribute
+            WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_new_attribute_name)
+        ) THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An attribute with that name already exists';
+        END IF;
+    END IF;
+
+    -- Validate new datatype
+    SELECT datatype_id INTO v_new_datatype_id FROM t_datatype WHERE datatype = p_new_datatype;
+    IF v_new_datatype_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Datatype not found';
+    END IF;
+
+    -- Update attribute
+    UPDATE t_attribute
+    SET attribute_name = p_new_attribute_name,
+        fk_datatype_id = v_new_datatype_id
+    WHERE attribute_id = v_attr_id;
+END //
+
 CREATE OR REPLACE PROCEDURE update_entity_instance(
     IN p_instance_id      INT,
     IN p_attribute_names  TEXT,
@@ -785,6 +1014,38 @@ BEGIN
     DELETE FROM t_relation_values WHERE relation_instance_id = p_rel_instance_id;
 END //
 
+CREATE OR REPLACE PROCEDURE delete_attribute(
+    IN p_entity_type      TEXT,
+    IN p_attribute_name   VARCHAR(255)
+)
+BEGIN
+    DECLARE v_entity_id INT;
+    DECLARE v_attr_id INT;
+
+    -- Validate entity
+    SELECT entity_id INTO v_entity_id FROM t_entity WHERE entity_type = p_entity_type;
+    IF v_entity_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Entity type not found';
+    END IF;
+
+    -- Find attribute
+    SELECT attribute_id INTO v_attr_id
+    FROM t_attribute
+    WHERE fk_entity_id = v_entity_id AND LOWER(attribute_name) = LOWER(p_attribute_name);
+
+    IF v_attr_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute not found for this entity';
+    END IF;
+
+    -- Prevent deletion of PK attribute
+    IF (SELECT is_unique FROM t_attribute WHERE attribute_id = v_attr_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot delete primary key attribute';
+    END IF;
+
+    -- Delete attribute (CASCADE removes related t_values, t_relation_participant, t_relation_values)
+    DELETE FROM t_attribute WHERE attribute_id = v_attr_id;
+END //
+
 CREATE OR REPLACE PROCEDURE delete_entity_type(IN p_entity_type TEXT)
 BEGIN
     DELETE FROM t_entity WHERE entity_type = p_entity_type;
@@ -876,6 +1137,24 @@ END //
 DELIMITER ;
 
 -- ============================================================================
+-- EVENT: Automatically shift access to 'read' when expirationDate has elapsed
+-- Runs daily at midnight. Requires: SET GLOBAL event_scheduler = ON;
+-- ============================================================================
+SET GLOBAL event_scheduler = ON;
+
+DROP EVENT IF EXISTS evt_expire_attribute_access;
+
+CREATE EVENT evt_expire_attribute_access
+    ON SCHEDULE EVERY 1 DAY
+    STARTS CURRENT_DATE + INTERVAL 0 SECOND
+    DO
+        UPDATE t_attribute
+        SET access = 'read'
+        WHERE expirationDate IS NOT NULL
+          AND expirationDate < CURDATE()
+          AND access != 'read';
+
+-- ============================================================================
 -- PART 3: Data Population (Entities, Instances, Relations)
 -- ============================================================================
 
@@ -927,10 +1206,16 @@ INSERT INTO t_user_preferences (user_id, preference_id) VALUES
 -- 4. ENTITY TYPES
 -- ---------------------------------------------------------------------------
 SELECT '--- 4. CREATE ENTITY TYPES ---' AS Step;
-CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE);
-CALL create_entity_with_attributes('Event',   'name,date,location',  'VARCHAR,DATE,VARCHAR',   TRUE);
-CALL create_entity_with_attributes('Teacher', 'name,email,uid',  'VARCHAR,VARCHAR,INTEGER', FALSE);
-CALL create_entity_with_attributes('Room',    'name,capacity',       'VARCHAR,INTEGER',         FALSE);
+-- create_entity_with_attributes(type, attributes, datatypes, isEvent, isRequired_flags)
+-- All entity attributes are automatically isRessource=TRUE
+--   Student: name(required), email(required), class, uid
+CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE, '1,1,0,0');
+--   Event: name(required), date(required), location
+CALL create_entity_with_attributes('Event',   'name,date,location',      'VARCHAR,DATE,VARCHAR',            TRUE,  '1,1,0');
+--   Teacher: name(required), email(required), uid
+CALL create_entity_with_attributes('Teacher', 'name,email,uid',          'VARCHAR,VARCHAR,INTEGER',         FALSE, '1,1,0');
+--   Room: name(required), capacity
+CALL create_entity_with_attributes('Room',    'name,capacity',           'VARCHAR,INTEGER',                 FALSE, '1,0');
 
 -- ---------------------------------------------------------------------------
 -- 5. ENTITY INSTANCES
@@ -956,22 +1241,30 @@ CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2
 -- 6. RELATION DEFINITIONS
 -- ---------------------------------------------------------------------------
 SELECT '--- 6. DEFINE RELATIONS ---' AS Step;
+-- add_relation_attribute(relation_id, name, datatype, isInputField, isRequired, isSingularRessource, expirationDate)
+
 -- relation_id=1: participates_in
 CALL create_relation('participates_in', 'm:n', 'Student participates in Event', @_);
 CALL add_relation_participant(1, 'Student', 0, 15);
 CALL add_relation_participant(1, 'Event',   0, NULL);
-CALL add_relation_attribute(1, 'reg_date', 'DATE');
+-- reg_date: isInputField=TRUE, isRequired=TRUE, expires 2026-06-30
+CALL add_relation_attribute(1, 'reg_date', 'DATE', TRUE, TRUE, FALSE, '2026-06-30');
+-- nimmtTeil: isInputField=TRUE, not required, not singular, no expiration
+CALL add_relation_attribute(1, 'nimmtTeil', 'BOOLEAN', TRUE, FALSE, FALSE, NULL);
 
 -- relation_id=2: organizes
 CALL create_relation('organizes', '1:n', 'Teacher organizes Event', @_);
 CALL add_relation_participant(2, 'Teacher', 1, 1);
 CALL add_relation_participant(2, 'Event',   0, NULL);
-CALL add_relation_attribute(2, 'hours', 'INTEGER');
+-- hours: isInputField=TRUE, not required, not singular
+CALL add_relation_attribute(2, 'hours', 'INTEGER', TRUE, FALSE, FALSE, NULL);
 
 -- relation_id=3: takes_place_in
 CALL create_relation('takes_place_in', '1:n', 'Event takes place in Room', @_);
 CALL add_relation_participant(3, 'Event', 0, NULL);
 CALL add_relation_participant(3, 'Room',  0, NULL);
+-- room_note: isInputField, isSingularRessource (only one room per event), required, expires 2026-12-31
+CALL add_relation_attribute(3, 'room_note', 'VARCHAR', TRUE, TRUE, TRUE, '2026-12-31');
 
 -- ---------------------------------------------------------------------------
 -- 7. RELATION INSTANCES
@@ -981,46 +1274,53 @@ CALL add_relation_participant(3, 'Room',  0, NULL);
 --   Event_id:   Skikurs=16, ScienceFair=20, TdoT=24
 --   Teacher_id: Smith=28, Huber=32
 --   Room_id:    Aula=36, EDV-Saal1=39
---   reg_date values: 42,43,44,45,46
---   hours values:    47,48
+--   (value_ids 42–56 created below in insertion order)
 SELECT '--- 7. CREATE RELATION INSTANCES ---' AS Step;
 
--- participates_in: Max -> Skikurs        (reg_date=2025-12-25, value_id=42)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-12-25', @_);
-CALL create_relation_instance(1, '1,16,42', @_);
+-- participates_in: Max -> Skikurs        (reg_date=2025-12-25, nimmtTeil=1)
+CALL create_relation_attribute_value(1, 'reg_date', '2025-12-25', @_);    -- 42
+CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 43
+CALL create_relation_instance(1, '1,16,42,43', @_);
 
--- participates_in: Anna -> Skikurs       (reg_date=2026-01-15, value_id=43)
-CALL create_relation_attribute_value(1, 'reg_date', '2026-01-15', @_);
-CALL create_relation_instance(1, '6,16,43', @_);
+-- participates_in: Anna -> Skikurs       (reg_date=2026-01-15, nimmtTeil=1)
+CALL create_relation_attribute_value(1, 'reg_date', '2026-01-15', @_);    -- 44
+CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 45
+CALL create_relation_instance(1, '6,16,44,45', @_);
 
--- participates_in: Max -> Science Fair   (reg_date=2025-05-10, value_id=44)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-05-10', @_);
-CALL create_relation_instance(1, '1,20,44', @_);
+-- participates_in: Max -> Science Fair   (reg_date=2025-05-10, nimmtTeil=1)
+CALL create_relation_attribute_value(1, 'reg_date', '2025-05-10', @_);    -- 46
+CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 47
+CALL create_relation_instance(1, '1,20,46,47', @_);
 
--- participates_in: Lukas -> Science Fair (reg_date=2025-05-12, value_id=45)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-05-12', @_);
-CALL create_relation_instance(1, '11,20,45', @_);
+-- participates_in: Lukas -> Science Fair (reg_date=2025-05-12, nimmtTeil=0 -> nimmt nicht teil)
+CALL create_relation_attribute_value(1, 'reg_date', '2025-05-12', @_);    -- 48
+CALL create_relation_attribute_value(1, 'nimmtTeil', '0', @_);            -- 49
+CALL create_relation_instance(1, '11,20,48,49', @_);
 
--- participates_in: Anna -> TdoT         (reg_date=2026-03-20, value_id=46)
-CALL create_relation_attribute_value(1, 'reg_date', '2026-03-20', @_);
-CALL create_relation_instance(1, '6,24,46', @_);
+-- participates_in: Anna -> TdoT         (reg_date=2026-03-20, nimmtTeil=1)
+CALL create_relation_attribute_value(1, 'reg_date', '2026-03-20', @_);    -- 50
+CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 51
+CALL create_relation_instance(1, '6,24,50,51', @_);
 
--- organizes: Smith -> Science Fair       (hours=10, value_id=47)
-CALL create_relation_attribute_value(2, 'hours', '10', @_);
-CALL create_relation_instance(2, '28,20,47', @_);
+-- organizes: Smith -> Science Fair       (hours=10)
+CALL create_relation_attribute_value(2, 'hours', '10', @_);               -- 52
+CALL create_relation_instance(2, '28,20,52', @_);
 
--- organizes: Huber -> TdoT              (hours=6, value_id=48)
-CALL create_relation_attribute_value(2, 'hours', '6', @_);
-CALL create_relation_instance(2, '32,24,48', @_);
+-- organizes: Huber -> TdoT              (hours=6)
+CALL create_relation_attribute_value(2, 'hours', '6', @_);                -- 53
+CALL create_relation_instance(2, '32,24,53', @_);
 
--- takes_place_in: Skikurs -> Aula
-CALL create_relation_instance(3, '16,36', @_);
+-- takes_place_in: Skikurs -> Aula           (room_note)
+CALL create_relation_attribute_value(3, 'room_note', 'Hauptsaal reserviert', @_);  -- 54
+CALL create_relation_instance(3, '16,36,54', @_);
 
--- takes_place_in: Science Fair -> Aula
-CALL create_relation_instance(3, '20,36', @_);
+-- takes_place_in: Science Fair -> Aula       (room_note)
+CALL create_relation_attribute_value(3, 'room_note', 'Bühne benötigt', @_);        -- 55
+CALL create_relation_instance(3, '20,36,55', @_);
 
--- takes_place_in: TdoT -> EDV-Saal 1
-CALL create_relation_instance(3, '24,39', @_);
+-- takes_place_in: TdoT -> EDV-Saal 1        (room_note)
+CALL create_relation_attribute_value(3, 'room_note', '', @_);                       -- 56
+CALL create_relation_instance(3, '24,39,56', @_);
 
 SELECT '--- FILL_DB COMPLETED ---' AS Message;
 
@@ -1042,20 +1342,20 @@ INSERT INTO t_users (display_name, email, job_title) VALUES
 -- Testaufruf 1: Nur Schüler der Klasse 5AHIT importieren
 --   Erwartet: Elena Fischer und Maria Gruber werden als Student-Instanzen erstellt
 -- ---------------------------------------------------------------------------
-CALL create_entity_instances_from_users('5AHIT', NULL);
+-- CALL create_entity_instances_from_users('5AHIT', NULL);
 
 -- ---------------------------------------------------------------------------
 -- Testaufruf 2: Nur Lehrer importieren, gefiltert nach Name 'Berger'
 --   Erwartet: Nur Dr. Berger wird als Teacher-Instanz erstellt
 -- ---------------------------------------------------------------------------
-CALL create_entity_instances_from_users('Teacher', 'Berger');
+-- CALL create_entity_instances_from_users('Teacher', 'Berger');
 
 -- ---------------------------------------------------------------------------
 -- Testaufruf 3: Alle User ohne Filter importieren
 --   Erwartet: Alle 5 User werden als Instanzen erstellt (3 Students, 2 Teachers)
 --   ACHTUNG: Vorherige Aufrufe ggf. vorher rückgängig machen, um Duplikate zu vermeiden
 -- ---------------------------------------------------------------------------
-CALL create_entity_instances_from_users(NULL, NULL);
+-- CALL create_entity_instances_from_users(NULL, NULL);
 
--- Test 
-CALL create_attribute('Student', 'phone', 'VARCHAR');
+-- Test: create_attribute with isRequired=TRUE (isRessource is always TRUE for entity attributes)
+CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
