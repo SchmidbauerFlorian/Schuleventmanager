@@ -12,9 +12,11 @@ def create_event(event_name):
 
 def get_events(user_id):
     events = queries.fetch_all_events()
+    events2 = queries.get_entity_instance_by_id(6, True)
 
     event = {
     "_debug_fetch_all_events": events,
+    "_debug_get_entity_instance_by_id": events2,
     "current_event": {
         "id": 1,
         "name": "Wintersportwoche",

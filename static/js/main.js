@@ -78,6 +78,7 @@ export async function loadEvents() {
         const response = await fetch('/api/events');
         const events = await response.json();
         console.log("[DEBUG] fetch_all_events ->", events._debug_fetch_all_events);
+        console.log("[DEBUG] get_entity_instance_by_id ->", events._debug_get_entity_instance_by_id);
 
         return events;
 

@@ -4,7 +4,45 @@ const createEventBtn = document.getElementById("btnCreateEvent");
 const createEventSubmitBtn = document.getElementById("btnCreateEventSubmit");
 const deleteEventBtn = document.getElementById("btnDeleteEvent");
 const deleteEventSubmitBtn = document.getElementById("btnDeleteEventSubmit");
+const expandTreeViewBtn = document.getElementById("btnExpandTreeView");
 
+expandTreeViewBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const sectionEvent = document.getElementById("section-event");
+  const sectionBodyEvent = document.getElementById("section-body-event");
+  const sectionBodyEventExtended = document.getElementById("section-body-event-extended");
+  const expandedContainer = document.getElementById("expanded-container");
+  const iconExpandTreeView = document.getElementById("iconExpandTreeView");
+
+  if(sectionEvent.style.position === "fixed"){
+    sectionEvent.style.position = "relative";
+    sectionEvent.style.borderRadius = "calc(var(--space) * 4)";
+    sectionEvent.style.padding = "calc(var(--space) * 4)";
+
+    sectionBodyEvent.style.height = "388px";
+
+    sectionBodyEventExtended.style.display = "none";
+
+    expandedContainer.style.width = "100%";
+    expandedContainer.style.margin = "0";
+
+    iconExpandTreeView.src = "/static/assets/images/arrow-expand.svg";
+  }
+  else{
+    sectionEvent.style.position = "fixed";
+    sectionEvent.style.borderRadius = "0";
+    sectionEvent.style.padding = "calc(var(--space) * 2)";
+
+    sectionBodyEvent.style.height = "auto";
+
+    sectionBodyEventExtended.style.display = "flex";
+
+    expandedContainer.style.width = "calc(1366px - (var(--space) * 4 * 2))";
+    expandedContainer.style.margin = "0 auto";
+
+    iconExpandTreeView.src = "/static/assets/images/overlay-close.svg";
+  }
+});
 createEventBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   openOverlay("create-event");
