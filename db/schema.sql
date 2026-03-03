@@ -760,7 +760,8 @@ BEGIN
         -- ---------------------------------------------------------------
         -- Part 2: Relation attributes connected to the event
         --   (e.g. reg_date, nimmtTeil, hours, room_note)
-        --   Each distinct relation attribute is counted once per event.
+        --   Each relation-attribute VALUE (instance) is counted individually,
+        --   so 2 participants each contributing reg_date => 2 rows.
         -- ---------------------------------------------------------------
         SELECT
             v_name.value                          AS event_name,
@@ -770,7 +771,7 @@ BEGIN
             a_rel.isRessource,
             a_rel.isSingularRessource,
             a_rel.isRequired,
-            MAX(v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
+            (v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
         FROM t_relation_values rv_event
         -- Join the event's PK value that sits in this relation instance
         JOIN t_values     v_event  ON rv_event.fk_value_id = v_event.value_id
@@ -790,7 +791,6 @@ BEGIN
             WHERE LOWER(a2.attribute_name) = 'name'
         ) v_name ON v_name.entity_instance_id = v_event.entity_instance_id
         WHERE (p_event_instance_id IS NULL OR v_event.entity_instance_id = p_event_instance_id)
-        GROUP BY v_event.entity_instance_id, a_rel.attribute_id, v_name.value
     ) sub
     GROUP BY sub.event_instance_id, sub.event_name
     ORDER BY sub.event_instance_id;
