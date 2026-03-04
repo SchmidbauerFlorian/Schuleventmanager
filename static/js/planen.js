@@ -1,4 +1,4 @@
-import { showMessageBox, loadEvents, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics } from "./main.js";
+import { showMessageBox, loadEvents, loadEvent, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics, updateAllEventUI } from "./main.js";
 
 const createEventBtn = document.getElementById("btnCreateEvent");
 const createEventSubmitBtn = document.getElementById("btnCreateEventSubmit");
@@ -79,38 +79,31 @@ deleteEventSubmitBtn.addEventListener("click", async (e) => {
 });
 document.addEventListener('DOMContentLoaded', async function() {
     const events = await loadEvents();
-
-    updateEventDetails(events["current_event"]["name"], events["current_event"]["created_at"], events["current_event"]["duration"]);
-    updateEventDropdown(events["all_events"]);
-    updateMessageHistory(events["current_event"]["messages"]);
-    updateRessourceStatistics(events["current_event"]["statistics"]);
-    updateInteractionStatistics(events["current_event"]["statistics"]);
+    updateAllEventUI(events);
 });
 
 async function deleteEvent() {
   const eventName = document.getElementById("inputEventNameDelete").value;
-  await fetch("/api/events", {
+
+  const response = await fetch("/api/events", {
     method: "DELETE",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ eventName })
   });
 
+  const events = await response.json();
+  updateAllEventUI(events);
 }
 
 async function createEvent() {
   const eventName = document.getElementById("inputEventName").value;
 
-  await fetch("/api/events", {
+  const response = await fetch("/api/events", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ eventName })
   });
 
-  const events = await loadEvents();
-
-  updateEventDetails(events["current_event"]["name"], events["current_event"]["created_at"], events["current_event"]["duration"]);
-  updateEventDropdown(events["all_events"]);
-  updateMessageHistory(events["current_event"]["messages"]);
-  updateRessourceStatistics(events["current_event"]["statistics"]);
-  updateInteractionStatistics(events["current_event"]["statistics"]);
+  const events = await response.json();
+  updateAllEventUI(events);
 }

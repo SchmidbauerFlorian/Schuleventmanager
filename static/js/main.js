@@ -77,15 +77,32 @@ export async function loadEvents() {
     try {
         const response = await fetch('/api/events');
         const events = await response.json();
-        console.log("[DEBUG] fetch_all_events ->", events._debug_fetch_all_events);
-        console.log("[DEBUG] get_entity_instance_by_id ->", events._debug_get_entity_instance_by_id);
-
         return events;
-
     } catch (error) {
         console.error('Fehler beim Laden der Events:', error);
         alert('Events konnten nicht geladen werden');
     }
+}
+
+export async function loadEvent(eventId) {
+    try {
+        const response = await fetch(`/api/events/${eventId}`);
+        const events = await response.json();
+        return events;
+    } catch (error) {
+        console.error('Fehler beim Laden des Events:', error);
+        alert('Event konnte nicht geladen werden');
+    }
+}
+
+export function updateAllEventUI(events) {
+    if (!events || !events.current_event) return;
+    const ev = events.current_event;
+    updateEventDetails(ev.name, ev.created_at, ev.duration);
+    updateEventDropdown(events.all_events);
+    updateMessageHistory(ev.messages);
+    updateRessourceStatistics(ev.statistics);
+    updateInteractionStatistics(ev.statistics);
 }
 export function openDropdown() {
     const dropdownEventsContainer = document.getElementById("dropdownEvents");
@@ -158,16 +175,14 @@ export function closeOverlay() {
 
 export function updateEventDetails(name, createdAt, duration) {
   const dropdownSelectedItem = document.getElementById("dropdownSelectedItem");
+  const eventNameElem        = document.getElementById("eventName");
+  const eventCreatedAtElem   = document.getElementById("eventCreatedAt");
+  const eventDurationElem    = document.getElementById("eventDuration");
 
-  const eventNameElem = document.getElementById("eventName");
-  const eventCreatedAtElem = document.getElementById("eventCreatedAt");
-  const eventDurationElem = document.getElementById("eventDuration");
-
-  dropdownSelectedItem.textContent = name;
-  
-  eventNameElem.textContent = name;
-  eventCreatedAtElem.textContent = createdAt;
-  eventDurationElem.textContent = duration;
+  if (dropdownSelectedItem) dropdownSelectedItem.textContent = name;
+  if (eventNameElem)        eventNameElem.textContent = name;
+  if (eventCreatedAtElem)   eventCreatedAtElem.textContent = createdAt;
+  if (eventDurationElem)    eventDurationElem.textContent = duration;
 }
 
 export function updateEventDropdown(events){
@@ -188,11 +203,21 @@ export function updateEventDropdown(events){
         eventItem.appendChild(eventIcon);
         eventItem.appendChild(eventText);
 
+        eventItem.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            closeDropdown();
+            const events = event["id"] === null
+                ? await loadEvents()
+                : await loadEvent(event["id"]);
+            updateAllEventUI(events);
+        });
+
         dropdownEventsContainer.appendChild(eventItem);
     });
 };
 export function updateMessageHistory(messages){
     const messageHistoryContainer = document.getElementById("message-history");
+    if (!messageHistoryContainer) return;
     messageHistoryContainer.innerHTML = "";
     const messageTitleElem = document.createElement("h2");
     messageTitleElem.textContent = "Verlauf";
@@ -217,6 +242,7 @@ export function updateMessageHistory(messages){
 };
 export function updateRessourceStatistics(stats){
     const statsRessources = document.getElementById("stats-ressources");
+    if (!statsRessources) return;
     const statsPeople = document.getElementById("stats-people");
     const statsLists = document.getElementById("stats-lists");
     const statsInformations = document.getElementById("stats-informations");
@@ -299,6 +325,7 @@ export function updateRessourceStatistics(stats){
 }
 export function updateInteractionStatistics(stats){
     const inputRequiredRatio = document.getElementById("input-required-ratio");
+    if (!inputRequiredRatio) return;
     const inpreqInputFields = document.getElementById("inpreq-input-fields");
     const inpreqRequiredFields = document.getElementById("inpreq-required-fields");
     const inputRemainingRatio = document.getElementById("input-remaining-ratio");

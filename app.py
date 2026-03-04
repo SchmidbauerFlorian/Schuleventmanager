@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-from services.event_service import create_event, delete_event, get_events
+from services.event_service import create_event, delete_event, get_events, get_event
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -82,8 +82,16 @@ def plan():
 @app.route('/api/events', methods=['POST'])
 def api_create_event():
     data = request.get_json()
-    event = create_event(data["eventName"])
-    return jsonify(event), 201
+    events = create_event(data["eventName"])
+    return jsonify(events), 200
+
+@app.route('/api/events/<int:event_id>', methods=['GET'])
+def api_get_event(event_id):
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    events = get_event(event_id)
+    return jsonify(events), 200
 
 @app.route('/api/events', methods=['GET'])
 def api_get_events():

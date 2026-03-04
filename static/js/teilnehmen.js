@@ -1,9 +1,10 @@
-import { loadEvents, updateEventDropdown, updateInteractionStatistics, updateInteractionTree } from "./main.js";
+import { loadEvents, updateEventDropdown, updateInteractionStatistics, updateInteractionTree, updateAllEventUI } from "./main.js";
 
 document.addEventListener('DOMContentLoaded', async function() {
     const events = await loadEvents();
-
-    updateEventDropdown(events["all_events"]);
-    updateInteractionStatistics(events["current_event"]["statistics"]);
-    updateInteractionTree(events["current_event"]["statistics"]["required-fields"], events["current_event"]["statistics"]["required-remaining"]);
+    updateAllEventUI(events);
+    if (events && events.current_event) {
+        const stats = events.current_event.statistics;
+        updateInteractionTree(stats["required-fields"], stats["required-remaining"]);
+    }
 });
