@@ -9,11 +9,14 @@ def _format_stats(stats_row: dict) -> dict:
     required           = int(stats_row.get('cnt_required')            or 0)
     required_missing   = int(stats_row.get('cnt_required_missing')    or 0)
     ressources         = int(stats_row.get('cnt_ressources')          or 0)
+    people             = int(stats_row.get('cnt_person_ressources')   or 0)
+    lists              = int(stats_row.get('cnt_list_ressources')     or 0)
+    singular           = int(stats_row.get('cnt_singular_ressources') or 0)
     return {
         "ressources":        ressources,
-        "people":            0,
-        "lists":             0,
-        "informations":      0,
+        "people":            people,
+        "lists":             lists,
+        "informations":      singular,
         "input-fields":      input_fields,
         "input-remaining":   input_fields - input_filled,
         "required-fields":   required,
@@ -45,9 +48,9 @@ def _sum_stats(all_stats: list) -> dict:
     def _i(row, key): return int(row.get(key) or 0)
     return {
         "ressources":         sum(_i(r, 'cnt_ressources')          for r in all_stats),
-        "people":             0,
-        "lists":              0,
-        "informations":       0,
+        "people":             sum(_i(r, 'cnt_person_ressources')   for r in all_stats),
+        "lists":              sum(_i(r, 'cnt_list_ressources')     for r in all_stats),
+        "informations":       sum(_i(r, 'cnt_singular_ressources') for r in all_stats),
         "input-fields":       sum(_i(r, 'cnt_input_fields')        for r in all_stats),
         "input-remaining":    sum(_i(r, 'cnt_input_fields')        for r in all_stats)
                             - sum(_i(r, 'cnt_input_fields_filled') for r in all_stats),

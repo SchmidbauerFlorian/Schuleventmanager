@@ -103,6 +103,7 @@ export function updateAllEventUI(events) {
     updateMessageHistory(ev.messages);
     updateRessourceStatistics(ev.statistics);
     updateInteractionStatistics(ev.statistics);
+    updateInteractionTree(ev.statistics["required-fields"], ev.statistics["required-remaining"]);
 }
 export function openDropdown() {
     const dropdownEventsContainer = document.getElementById("dropdownEvents");
