@@ -63,8 +63,9 @@ CREATE TABLE t_attribute (
     expirationDate DATE DEFAULT NULL COMMENT 'When elapsed, access automatically shifts to read',
     isRequired BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute must be provided on instance creation',
     isInputField BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this is a relation input field (read/write + expirationDate)',
-    isRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute represents a resource (entity attribute)',
+    isListRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute is a list resource (entity attribute)',
     isSingularRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this relation attribute accepts only a single value',
+    isPersonRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this is a person resource (entity attribute where entity = Student or Teacher)',
     
     CONSTRAINT fk_attribute_entity 
         FOREIGN KEY (fk_entity_id) 
@@ -334,12 +335,13 @@ BEGIN
     INSERT INTO t_entity(entity_type, isEvent) VALUES (p_entity_type, p_is_event);
     SET v_entity_id = LAST_INSERT_ID();
 
-    -- Create PK attribute (isRessource=TRUE since it belongs to an entity)
+    -- Create PK attribute (isListRessource=TRUE since it belongs to an entity)
     SELECT datatype_id INTO v_pk_datatype_id FROM t_datatype WHERE datatype = 'INTEGER';
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, is_unique, isRessource)
-    VALUES (v_entity_id, v_pk_datatype_id, CONCAT(p_entity_type, '_id'), TRUE, TRUE);
+    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, is_unique, isListRessource, isPersonRessource)
+    VALUES (v_entity_id, v_pk_datatype_id, CONCAT(p_entity_type, '_id'), TRUE, TRUE,
+            LOWER(p_entity_type) IN ('student', 'teacher'));
 
-    -- Create other attributes (all entity attributes are automatically isRessource=TRUE)
+    -- Create other attributes (all entity attributes are automatically isListRessource=TRUE)
     WHILE i <= v_attr_len DO
         SET v_attr_name = get_list_element(p_attribute_names, i);
         SET v_dtype_name = get_list_element(p_datatypes, i);
@@ -353,8 +355,9 @@ BEGIN
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Datatype not found';
         END IF;
 
-        INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isRessource)
-        VALUES (v_entity_id, v_datatype_id, v_attr_name, v_is_req, TRUE);
+        INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isListRessource, isPersonRessource)
+        VALUES (v_entity_id, v_datatype_id, v_attr_name, v_is_req, TRUE,
+                LOWER(p_entity_type) IN ('student', 'teacher'));
 
         SET i = i + 1;
     END WHILE;
@@ -400,9 +403,10 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute already exists for this entity';
     END IF;
 
-    -- Create attribute (entity attributes are always isRessource=TRUE)
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isRessource)
-    VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE);
+    -- Create attribute (entity attributes are always isListRessource=TRUE)
+    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isListRessource, isPersonRessource)
+    VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE,
+            (SELECT LOWER(entity_type) IN ('student', 'teacher') FROM t_entity WHERE entity_id = v_entity_id));
     SET v_attr_id = LAST_INSERT_ID();
 
     -- Backfill existing instances with NULL value
@@ -706,9 +710,10 @@ END //
 
 
 -- =====> Claude Opus 4.6 - Datum 3.3.2026
--- counts of isInputField, isRessource, isSingularRessource, isRequired attributes
+-- counts of isInputField, isListRessource, isPersonRessource, isSingularRessource, isRequired attributes
 -- Includes BOTH entity attributes (direct) AND relation attributes (via relations)
 -- so that e.g. nimmtTeil (isInputField on a relation) appears in cnt_input_fields
+-- Formula: cnt_ressources = cnt_person_ressources + cnt_list_ressources + cnt_singular_ressources
 CREATE OR REPLACE PROCEDURE get_event_attribute_statistics(
     IN p_event_instance_id INT
 )
@@ -719,15 +724,19 @@ BEGIN
 
         -- Attribute flag counts
         SUM(sub.isInputField)                                       AS cnt_input_fields,
-        SUM(sub.isRessource)                                        AS cnt_ressources,
+        SUM(sub.isListRessource)                                    AS cnt_list_ressources,
+        SUM(sub.isPersonRessource)                                  AS cnt_person_ressources,
         SUM(sub.isSingularRessource)                                AS cnt_singular_ressources,
         SUM(sub.isRequired)                                         AS cnt_required,
+
+        -- Total resources = person + list + singular
+        SUM(sub.isPersonRessource) + SUM(sub.isListRessource) + SUM(sub.isSingularRessource) AS cnt_ressources,
 
         -- Filled / missing based on flags
         SUM(CASE WHEN sub.isRequired   AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_required_filled,
         SUM(CASE WHEN sub.isRequired   AND NOT sub.is_filled THEN 1 ELSE 0 END) AS cnt_required_missing,
         SUM(CASE WHEN sub.isInputField AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_input_fields_filled,
-        SUM(CASE WHEN sub.isRessource  AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_ressources_filled,
+        SUM(CASE WHEN (sub.isListRessource OR sub.isPersonRessource OR sub.isSingularRessource) AND sub.is_filled THEN 1 ELSE 0 END) AS cnt_ressources_filled,
         COUNT(*)                                                    AS cnt_total_attributes
 
     FROM (
@@ -739,7 +748,8 @@ BEGIN
             v_ev.entity_instance_id                AS event_instance_id,
             a.attribute_id,
             a.isInputField,
-            a.isRessource,
+            a.isListRessource,
+            a.isPersonRessource,
             a.isSingularRessource,
             a.isRequired,
             (v_ev.value IS NOT NULL AND v_ev.value != '') AS is_filled
@@ -768,7 +778,8 @@ BEGIN
             v_event.entity_instance_id              AS event_instance_id,
             a_rel.attribute_id,
             a_rel.isInputField,
-            a_rel.isRessource,
+            a_rel.isListRessource,
+            a_rel.isPersonRessource,
             a_rel.isSingularRessource,
             a_rel.isRequired,
             (v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
@@ -806,7 +817,8 @@ BEGIN
         sub2.attribute_name,
         sub2.source,
         sub2.isInputField,
-        sub2.isRessource,
+        sub2.isListRessource,
+        sub2.isPersonRessource,
         sub2.isSingularRessource,
         sub2.isRequired,
         sub2.is_filled
@@ -816,7 +828,8 @@ BEGIN
             a.attribute_name,
             'entity' AS source,
             a.isInputField,
-            a.isRessource,
+            a.isListRessource,
+            a.isPersonRessource,
             a.isSingularRessource,
             a.isRequired,
             (v_ev.value IS NOT NULL AND v_ev.value != '') AS is_filled
@@ -833,7 +846,8 @@ BEGIN
             a_rel.attribute_name,
             'relation' AS source,
             a_rel.isInputField,
-            a_rel.isRessource,
+            a_rel.isListRessource,
+            a_rel.isPersonRessource,
             a_rel.isSingularRessource,
             a_rel.isRequired,
             MAX(v_relval.value IS NOT NULL AND v_relval.value != '') AS is_filled
@@ -1207,7 +1221,7 @@ INSERT INTO t_user_preferences (user_id, preference_id) VALUES
 -- ---------------------------------------------------------------------------
 SELECT '--- 4. CREATE ENTITY TYPES ---' AS Step;
 -- create_entity_with_attributes(type, attributes, datatypes, isEvent, isRequired_flags)
--- All entity attributes are automatically isRessource=TRUE
+-- All entity attributes are automatically isListRessource=TRUE (and isPersonRessource=TRUE for Student/Teacher)
 --   Student: name(required), email(required), class, uid
 CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE, '1,1,0,0');
 --   Event: name(required), date(required), location
@@ -1357,5 +1371,5 @@ INSERT INTO t_users (display_name, email, job_title) VALUES
 -- ---------------------------------------------------------------------------
 -- CALL create_entity_instances_from_users(NULL, NULL);
 
--- Test: create_attribute with isRequired=TRUE (isRessource is always TRUE for entity attributes)
+-- Test: create_attribute with isRequired=TRUE (isListRessource is always TRUE for entity attributes)
 CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
