@@ -107,3 +107,186 @@ async function createEvent() {
   const events = await response.json();
   updateAllEventUI(events);
 }
+
+// --- Ressource Dropdown & Tags ---
+const personenDropdownBtn = document.getElementById("personenDropdownBtn");
+const personenDropdown = document.getElementById("personenDropdown");
+const personenSearch = document.getElementById("personenSearch");
+const selectedGroupsContainer = document.getElementById("selectedGroups");
+const selectedGroups = new Set();
+
+personenDropdownBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = personenDropdown.style.display === "flex";
+  attributDropdown.style.display = "none";
+  closeAllSubDropdowns();
+  personenDropdown.style.display = isOpen ? "none" : "flex";
+  if (!isOpen) personenSearch.focus();
+});
+
+personenSearch.addEventListener("input", () => {
+  const query = personenSearch.value.toLowerCase();
+  const items = personenDropdown.querySelectorAll(".dropdown-item");
+  items.forEach(item => {
+    const group = item.dataset.group.toLowerCase();
+    const alreadySelected = selectedGroups.has(item.dataset.group);
+    item.style.display = (!alreadySelected && group.includes(query)) ? "flex" : "none";
+  });
+});
+
+personenSearch.addEventListener("click", (e) => {
+  e.stopPropagation();
+  personenDropdown.style.display = "flex";
+  filterDropdownItems(personenSearch.value.toLowerCase());
+});
+
+personenDropdown.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const item = e.target.closest(".dropdown-item");
+  if (!item) return;
+  const group = item.dataset.group;
+  if (selectedGroups.has(group)) return;
+  selectedGroups.add(group);
+  item.style.display = "none";
+  renderTags();
+  personenSearch.value = "";
+  filterDropdownItems("");
+});
+
+document.addEventListener("click", () => {
+  personenDropdown.style.display = "none";
+});
+
+function filterDropdownItems(query) {
+  const items = personenDropdown.querySelectorAll(".dropdown-item");
+  items.forEach(item => {
+    const group = item.dataset.group.toLowerCase();
+    const alreadySelected = selectedGroups.has(item.dataset.group);
+    item.style.display = (!alreadySelected && group.includes(query)) ? "flex" : "none";
+  });
+}
+
+function renderTags() {
+  selectedGroupsContainer.innerHTML = "";
+  selectedGroups.forEach(group => {
+    const tag = document.createElement("div");
+    tag.className = "group-tag";
+    tag.innerHTML = `<p>${group}</p><img src="/static/assets/images/tv_x.svg" alt="Remove">`;
+    tag.querySelector("img").addEventListener("click", () => {
+      selectedGroups.delete(group);
+      renderTags();
+      filterDropdownItems(personenSearch.value.toLowerCase());
+    });
+    selectedGroupsContainer.appendChild(tag);
+  });
+}
+
+// --- Attribut Dropdown ---
+const attributDropdownBtn = document.getElementById("attributDropdownBtn");
+const attributDropdown = document.getElementById("attributDropdown");
+const attributFieldsApi = document.getElementById("attributFieldsApi");
+const attributFieldsRessource = document.getElementById("attributFieldsRessource");
+
+attributDropdownBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = attributDropdown.style.display === "flex";
+  closeAllSubDropdowns();
+  personenDropdown.style.display = "none";
+  attributDropdown.style.display = isOpen ? "none" : "flex";
+});
+
+attributDropdown.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const item = e.target.closest(".dropdown-item");
+  if (!item) return;
+  const type = item.dataset.type;
+  const text = item.querySelector("p").textContent;
+  document.getElementById("attributSelectedText").textContent = text;
+  attributDropdown.style.display = "none";
+
+  attributFieldsApi.style.display = type === "api" ? "flex" : "none";
+  attributFieldsRessource.style.display = type === "ressource" ? "flex" : "none";
+  const attributFieldsEingabe = document.getElementById("attributFieldsEingabe");
+  attributFieldsEingabe.style.display = type === "eingabe" ? "flex" : "none";
+  closeAllSubDropdowns();
+});
+
+document.addEventListener("click", () => {
+  attributDropdown.style.display = "none";
+  closeAllSubDropdowns();
+});
+
+// --- Generic sub-dropdown logic ---
+const subDropdowns = [
+  { btn: "apiEmailDropdownBtn", dropdown: "apiEmailDropdown", text: "apiEmailSelectedText" },
+  { btn: "apiBerechtigungDropdownBtn", dropdown: "apiBerechtigungDropdown", text: "apiBerechtigungSelectedText" },
+  { btn: "apiHinzufuegenDropdownBtn", dropdown: "apiHinzufuegenDropdown", text: "apiHinzufuegenSelectedText" },
+  { btn: "resRessourceDropdownBtn", dropdown: "resRessourceDropdown", text: "resRessourceSelectedText" },
+  { btn: "resAttributDropdownBtn", dropdown: "resAttributDropdown", text: "resAttributSelectedText" },
+  { btn: "resHinzufuegenDropdownBtn", dropdown: "resHinzufuegenDropdown", text: "resHinzufuegenSelectedText" },
+  { btn: "eingabeBerechtigungDropdownBtn", dropdown: "eingabeBerechtigungDropdown", text: "eingabeBerechtigungSelectedText" },
+  { btn: "eingabeFormatDropdownBtn", dropdown: "eingabeFormatDropdown", text: "eingabeFormatSelectedText" },
+  { btn: "eingabeHinzufuegenDropdownBtn", dropdown: "eingabeHinzufuegenDropdown", text: "eingabeHinzufuegenSelectedText" },
+];
+
+function closeAllSubDropdowns() {
+  subDropdowns.forEach(sd => {
+    const dd = document.getElementById(sd.dropdown);
+    if (dd) dd.style.display = "none";
+  });
+}
+
+subDropdowns.forEach(sd => {
+  const btn = document.getElementById(sd.btn);
+  const dropdown = document.getElementById(sd.dropdown);
+  const textEl = document.getElementById(sd.text);
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.style.display === "flex";
+    closeAllSubDropdowns();
+    attributDropdown.style.display = "none";
+    personenDropdown.style.display = "none";
+    dropdown.style.display = isOpen ? "none" : "flex";
+  });
+
+  dropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const item = e.target.closest(".dropdown-item");
+    if (!item) return;
+    textEl.textContent = item.querySelector("p").textContent;
+    dropdown.style.display = "none";
+  });
+});
+
+// --- Eingabe: Zeitlimit (date picker) ---
+const eingabeZeitlimitBtn = document.getElementById("eingabeZeitlimitBtn");
+const eingabeZeitlimitDate = document.getElementById("eingabeZeitlimitDate");
+const eingabeZeitlimitText = document.getElementById("eingabeZeitlimitText");
+
+eingabeZeitlimitBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  eingabeZeitlimitDate.showPicker ? eingabeZeitlimitDate.showPicker() : eingabeZeitlimitDate.click();
+});
+
+eingabeZeitlimitDate.addEventListener("change", () => {
+  if (eingabeZeitlimitDate.value) {
+    const parts = eingabeZeitlimitDate.value.split("-");
+    eingabeZeitlimitText.textContent = parts[2] + "." + parts[1] + "." + parts[0];
+  } else {
+    eingabeZeitlimitText.textContent = "Kein Zeitlimit";
+  }
+});
+
+// --- Eingabe: Pflichtfeld Toggle ---
+const eingabePflichtBtn = document.getElementById("eingabePflichtBtn");
+const eingabePflichtText = document.getElementById("eingabePflichtText");
+const eingabePflichtIcon = document.getElementById("eingabePflichtIcon");
+let isPflichtfeld = false;
+
+eingabePflichtBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  isPflichtfeld = !isPflichtfeld;
+  eingabePflichtText.textContent = isPflichtfeld ? "Pflichtfeld" : "Kein Pflichtfeld";
+  eingabePflichtIcon.src = isPflichtfeld ? "/static/assets/images/toggle-right.svg" : "/static/assets/images/toggle-left.svg";
+});

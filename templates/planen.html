@@ -349,32 +349,182 @@
                     <p>Ebene 6</p>
                 </div>
                 <div class="ressource-grid">
-                    <div id="tv-line-1" class="line"></div>
-
-                    <div id="r-student" class="ressource ressource-dark">
-                        <p>Schüler</p>
-                        <img src="{{ url_for('static', filename='assets/images/tv-ressource-person.svg') }}" alt="People Icon">
-                    </div>
-                    <div id="r-name" class="ressource">
-                        <p>Name</p>
-                        <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
-                    </div>
-                    <div id="r-mail" class="ressource">
-                        <p>Email</p>
-                        <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
-                    </div>
-                    <div id="r-reason" class="ressource">
-                        <p>Grund</p>
-                        <img src="{{ url_for('static', filename='assets/images/tv-attribute-input.svg') }}" alt="Input Icon">
-                    </div>
+                    <!-- TREE VIEW HIER -->
                 </div>
             </div>
             <div id="section-body-event-extended" class="section-body-event-extended">
                 <div class="event-extended-ressource">
                     <p>Ressource</p>
+                    <div class="ressource-form">
+                        <label for="ressourceName" class="button-light ressource-input-wrapper">
+                            <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
+                            <input type="text" id="ressourceName" placeholder="Ressourcenname">
+                        </label>
+                        <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="personenDropdownBtn">
+                            <img src="{{ url_for('static', filename='assets/images/tv_add_people.svg') }}" alt="People Icon">
+                            <input type="text" id="personenSearch" placeholder="Personen hinzufügen">
+                            <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                            <div id="personenDropdown" class="dropdown-container">
+                                <div class="dropdown-item clickable" data-group="1AHIT"><p>1AHIT</p></div>
+                                <div class="dropdown-item clickable" data-group="2AHIT"><p>2AHIT</p></div>
+                                <div class="dropdown-item clickable" data-group="3AHIT"><p>3AHIT</p></div>
+                                <div class="dropdown-item clickable" data-group="4AHIT"><p>4AHIT</p></div>
+                                <div class="dropdown-item clickable" data-group="5AHIT"><p>5AHIT</p></div>
+                                <div class="dropdown-item clickable" data-group="1AHET"><p>1AHET</p></div>
+                                <div class="dropdown-item clickable" data-group="2AHET"><p>2AHET</p></div>
+                                <div class="dropdown-item clickable" data-group="3AHET"><p>3AHET</p></div>
+                                <div class="dropdown-item clickable" data-group="4AHET"><p>4AHET</p></div>
+                                <div class="dropdown-item clickable" data-group="5AHET"><p>5AHET</p></div>
+                            </div>
+                        </div>
+                        <div id="selectedGroups" class="selected-groups"></div>
+                        <div class="button-dark clickable" id="btnCreateRessource">
+                            <p>Ressource erstellen</p>
+                            <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                        </div>
+                    </div>
                 </div>
                 <div class="event-extended-attribute">
                     <p>Attribut</p>
+                    <div class="ressource-form">
+                        <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="attributDropdownBtn">
+                            <img src="{{ url_for('static', filename='assets/images/tv_attribute.svg') }}" alt="Attribute Icon">
+                            <p id="attributSelectedText">Attributtyp wählen</p>
+                            <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                            <div id="attributDropdown" class="dropdown-container">
+                                <div class="dropdown-item clickable" data-type="api">
+                                    <img src="{{ url_for('static', filename='assets/images/tv_api.svg') }}" alt="API Icon">
+                                    <p>API-Endpunkt</p>
+                                </div>
+                                <div class="dropdown-item clickable" data-type="ressource">
+                                    <img src="{{ url_for('static', filename='assets/images/tv_ressource.svg') }}" alt="Ressource Icon">
+                                    <p>Abhängige Ressource</p>
+                                </div>
+                                <div class="dropdown-item clickable" data-type="eingabe">
+                                    <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
+                                    <p>Eingabe</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- API-Endpunkt Felder -->
+                        <div id="attributFieldsApi" class="attribut-fields" style="display:none;">
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiEmailDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
+                                <p id="apiEmailSelectedText">Email</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="apiEmailDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Email</p></div>
+                                    <div class="dropdown-item clickable"><p>Telefonnummer</p></div>
+                                    <div class="dropdown-item clickable"><p>Adresse</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiBerechtigungDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_visibility.png') }}" alt="Visibility Icon">
+                                <p id="apiBerechtigungSelectedText">Berechtigung</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="apiBerechtigungDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Öffentlich</p></div>
+                                    <div class="dropdown-item clickable"><p>Nur Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Privat</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiHinzufuegenDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_ressource.svg') }}" alt="Ressource Icon">
+                                <p id="apiHinzufuegenSelectedText">Hinzufügen zu</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="apiHinzufuegenDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
+                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Abhängige Ressource Felder -->
+                        <div id="attributFieldsRessource" class="attribut-fields" style="display:none;">
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="resRessourceDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_ressource.svg') }}" alt="Ressource Icon">
+                                <p id="resRessourceSelectedText">Ressource wählen</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="resRessourceDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
+                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Räume</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="resAttributDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_attribute.svg') }}" alt="Attribute Icon">
+                                <p id="resAttributSelectedText">Attribut der Ressource wählen</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="resAttributDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Name</p></div>
+                                    <div class="dropdown-item clickable"><p>Email</p></div>
+                                    <div class="dropdown-item clickable"><p>Klasse</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="resHinzufuegenDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_ressource.svg') }}" alt="Ressource Icon">
+                                <p id="resHinzufuegenSelectedText">Hinzufügen zu</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="resHinzufuegenDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
+                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Eingabe Felder -->
+                        <div id="attributFieldsEingabe" class="attribut-fields" style="display:none;">
+                            <label for="eingabeAttributName" class="button-light ressource-input-wrapper">
+                                <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
+                                <input type="text" id="eingabeAttributName" placeholder="Attributname">
+                            </label>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeBerechtigungDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_visibility.png') }}" alt="Visibility Icon">
+                                <p id="eingabeBerechtigungSelectedText">Berechtigung</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="eingabeBerechtigungDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Öffentlich</p></div>
+                                    <div class="dropdown-item clickable"><p>Nur Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Privat</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeFormatDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_format.svg') }}" alt="Format Icon">
+                                <p id="eingabeFormatSelectedText">Formatvorgabe</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="eingabeFormatDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Text</p></div>
+                                    <div class="dropdown-item clickable"><p>Zahl</p></div>
+                                    <div class="dropdown-item clickable"><p>Datum</p></div>
+                                </div>
+                            </div>
+                            <div class="eingabe-row">
+                                <div class="button-light ressource-input-wrapper eingabe-half clickable" id="eingabeZeitlimitBtn">
+                                    <p id="eingabeZeitlimitText">Kein Zeitlimit</p>
+                                    <img src="{{ url_for('static', filename='assets/images/tv_calendar.svg') }}" alt="Calendar Icon">
+                                    <input type="date" id="eingabeZeitlimitDate" class="hidden-date-input">
+                                </div>
+                                <div class="button-light ressource-input-wrapper eingabe-half clickable" id="eingabePflichtBtn">
+                                    <p id="eingabePflichtText">Kein Pflichtfeld</p>
+                                    <img id="eingabePflichtIcon" src="{{ url_for('static', filename='assets/images/toggle-left.svg') }}" alt="Toggle Icon">
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeHinzufuegenDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_ressource.svg') }}" alt="Ressource Icon">
+                                <p id="eingabeHinzufuegenSelectedText">Hinzufügen zu</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="eingabeHinzufuegenDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
+                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
+                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="button-dark clickable" id="btnCreateAttribut">
+                            <p>Attribut erstellen</p>
+                            <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="section-footer">
