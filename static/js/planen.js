@@ -6,6 +6,20 @@ const deleteEventBtn = document.getElementById("btnDeleteEvent");
 const deleteEventSubmitBtn = document.getElementById("btnDeleteEventSubmit");
 const expandTreeViewBtn = document.getElementById("btnExpandTreeView");
 
+// --- Horizontal Scroll Buttons ---
+const scrollContainer = document.getElementById("section-body-event");
+const btnScrollLeft = document.getElementById("btnScrollLeft");
+const btnScrollRight = document.getElementById("btnScrollRight");
+
+btnScrollLeft.addEventListener("click", (e) => {
+  e.stopPropagation();
+  scrollContainer.scrollBy({ left: -250, behavior: "smooth" });
+});
+btnScrollRight.addEventListener("click", (e) => {
+  e.stopPropagation();
+  scrollContainer.scrollBy({ left: 250, behavior: "smooth" });
+});
+
 expandTreeViewBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   const sectionEvent = document.getElementById("section-event");
@@ -349,8 +363,6 @@ btnCreateRessource.addEventListener("click", async (e) => {
       renderTags();
       await refreshTreeView();
       await refreshDropdowns();
-      const events = await loadEvent(eventId);
-      updateAllEventUI(events);
     } else {
       const errText = await response.text();
       console.error("[Resource] Server error:", response.status, errText);
@@ -425,8 +437,6 @@ btnCreateAttribut.addEventListener("click", async (e) => {
         document.getElementById("eingabeAttributName").value = "";
       }
       await refreshTreeView();
-      const events = await loadEvent(eventId);
-      updateAllEventUI(events);
     } else {
       const errText = await response.text();
       console.error("[Attribute] Server error:", response.status, errText);
@@ -456,6 +466,10 @@ async function refreshTreeView() {
       fetch(`/api/unlinked-entities?eventId=${eventId}`).then(r => r.json()),
     ]);
     renderTreeView(treeRes, unlinkedRes);
+
+    // Refresh event statistics after tree view changes
+    const events = await loadEvent(eventId);
+    updateAllEventUI(events);
   } catch (err) {
     console.error("Tree view Fehler:", err);
   }
@@ -549,8 +563,6 @@ function renderTreeView(resources, unlinkedEntities = []) {
             showMessageBox(`'${entityType}' mit Event verknüpft!`);
             await refreshTreeView();
             await refreshDropdowns();
-            const events = await loadEvent(eventId);
-            updateAllEventUI(events);
           } else {
             showMessageBox("Fehler beim Verknüpfen!");
           }

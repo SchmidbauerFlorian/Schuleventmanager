@@ -208,7 +208,7 @@ def create_resource_for_event(resource_name: str, groups: list, event_instance_i
             else:
                 cur1b.execute(
                     "CALL create_entity_with_attributes(?, ?, ?, FALSE, ?)",
-                    (resource_name, "name", "VARCHAR", "1"),
+                    (resource_name, "", "", ""),
                 )
             _drain(cur1b)
             cur1b.close()
