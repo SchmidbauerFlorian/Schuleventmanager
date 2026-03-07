@@ -733,7 +733,7 @@ label.ressource-input-wrapper{
     display: grid;
     width: 1722px;
     grid-template-columns: repeat(7, 246px);
-    grid-template-rows: repeat(10, calc(var(--space) * 2));
+    grid-auto-rows: calc(var(--space) * 2);
     row-gap: calc(var(--space) / 2);
     overflow: visible;
 }
@@ -760,6 +760,61 @@ label.ressource-input-wrapper{
     border-top: 2px dashed var(--color-secondary);
     align-self: center;
 }
+
+/* Tree View */
+.tree-resource-name{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space);
+    border-radius: var(--space);
+    height: calc(var(--space) * 2);
+    gap: calc(var(--space) / 2);
+    cursor: default;
+}
+.tree-resource-name p{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tree-resource-name img{
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+}
+.tree-attr-header{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space);
+    border-radius: var(--space);
+    height: calc(var(--space) * 2);
+    gap: calc(var(--space) / 2);
+    cursor: default;
+}
+.tree-attr-header p{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+.tree-attr-header img{
+    width: 10px;
+    opacity: 0.5;
+}
+.tree-cell{
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space);
+    height: calc(var(--space) * 2);
+}
+.tree-cell p{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9rem;
+}
+
 #tv-line-1{
     grid-column: 2 / 2;
     grid-row: 3 / 3;

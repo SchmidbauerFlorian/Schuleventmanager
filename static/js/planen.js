@@ -80,6 +80,14 @@ deleteEventSubmitBtn.addEventListener("click", async (e) => {
 document.addEventListener('DOMContentLoaded', async function() {
     const events = await loadEvents();
     updateAllEventUI(events);
+    await refreshTreeView();
+    await refreshDropdowns();
+});
+
+// Refresh tree + dropdowns when event is selected from dropdown
+window.addEventListener("eventSelected", async () => {
+  await refreshTreeView();
+  await refreshDropdowns();
 });
 
 async function deleteEvent() {
@@ -93,6 +101,8 @@ async function deleteEvent() {
 
   const events = await response.json();
   updateAllEventUI(events);
+  await refreshTreeView();
+  await refreshDropdowns();
 }
 
 async function createEvent() {
@@ -106,6 +116,8 @@ async function createEvent() {
 
   const events = await response.json();
   updateAllEventUI(events);
+  await refreshTreeView();
+  await refreshDropdowns();
 }
 
 // --- Ressource Dropdown & Tags ---
@@ -289,4 +301,337 @@ eingabePflichtBtn.addEventListener("click", (e) => {
   isPflichtfeld = !isPflichtfeld;
   eingabePflichtText.textContent = isPflichtfeld ? "Pflichtfeld" : "Kein Pflichtfeld";
   eingabePflichtIcon.src = isPflichtfeld ? "/static/assets/images/toggle-right.svg" : "/static/assets/images/toggle-left.svg";
+});
+
+
+// =========================================================================
+// Resource & Attribute Creation
+// =========================================================================
+
+function getCurrentEventId() {
+  return window._currentEventId || null;
+}
+
+function getActiveAttributeType() {
+  if (document.getElementById("attributFieldsApi").style.display === "flex") return "api";
+  if (document.getElementById("attributFieldsRessource").style.display === "flex") return "ressource";
+  if (document.getElementById("attributFieldsEingabe").style.display === "flex") return "eingabe";
+  return null;
+}
+
+// --- Create Resource ---
+const btnCreateRessource = document.getElementById("btnCreateRessource");
+btnCreateRessource.addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const resourceName = document.getElementById("ressourceName").value.trim();
+  if (!resourceName) {
+    showMessageBox("Fehler: Ressourcenname darf nicht leer sein!");
+    return;
+  }
+  const eventId = getCurrentEventId();
+  if (!eventId) {
+    showMessageBox("Fehler: Bitte zuerst ein einzelnes Event auswählen!");
+    return;
+  }
+  const groups = Array.from(selectedGroups);
+
+  try {
+    const response = await fetch("/api/resources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceName, groups, eventInstanceId: eventId }),
+    });
+
+    if (response.ok) {
+      showMessageBox(`Ressource '${resourceName}' erstellt!`);
+      document.getElementById("ressourceName").value = "";
+      selectedGroups.clear();
+      renderTags();
+      await refreshTreeView();
+      await refreshDropdowns();
+      const events = await loadEvent(eventId);
+      updateAllEventUI(events);
+    } else {
+      const errText = await response.text();
+      console.error("[Resource] Server error:", response.status, errText);
+      showMessageBox("Fehler beim Erstellen der Ressource!");
+    }
+  } catch (err) {
+    console.error("[Resource] Fetch error:", err);
+    showMessageBox("Fehler beim Erstellen der Ressource!");
+  }
+});
+
+// --- Create Attribute ---
+const btnCreateAttribut = document.getElementById("btnCreateAttribut");
+btnCreateAttribut.addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const activeType = getActiveAttributeType();
+  if (!activeType) {
+    showMessageBox("Fehler: Bitte zuerst einen Attributtyp wählen!");
+    return;
+  }
+  const eventId = getCurrentEventId();
+  if (!eventId) {
+    showMessageBox("Fehler: Bitte zuerst ein einzelnes Event auswählen!");
+    return;
+  }
+
+  let payload = { type: activeType, eventInstanceId: eventId };
+
+  if (activeType === "api") {
+    payload.field = document.getElementById("apiEmailSelectedText").textContent;
+    payload.permission = document.getElementById("apiBerechtigungSelectedText").textContent;
+    payload.entityType = document.getElementById("apiHinzufuegenSelectedText").textContent;
+    if (payload.entityType === "Hinzufügen zu") {
+      showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
+      return;
+    }
+  } else if (activeType === "ressource") {
+    payload.sourceEntity = document.getElementById("resRessourceSelectedText").textContent;
+    payload.sourceAttribute = document.getElementById("resAttributSelectedText").textContent;
+    payload.targetEntity = document.getElementById("resHinzufuegenSelectedText").textContent;
+    if (payload.sourceEntity === "Ressource wählen" || payload.targetEntity === "Hinzufügen zu") {
+      showMessageBox("Fehler: Bitte Ressourcen auswählen!");
+      return;
+    }
+  } else if (activeType === "eingabe") {
+    payload.attributeName = document.getElementById("eingabeAttributName").value.trim();
+    if (!payload.attributeName) {
+      showMessageBox("Fehler: Attributname darf nicht leer sein!");
+      return;
+    }
+    payload.permission = document.getElementById("eingabeBerechtigungSelectedText").textContent;
+    payload.datatype = document.getElementById("eingabeFormatSelectedText").textContent;
+    payload.expirationDate = document.getElementById("eingabeZeitlimitDate").value || null;
+    payload.isRequired = isPflichtfeld;
+    payload.entityType = document.getElementById("eingabeHinzufuegenSelectedText").textContent;
+    if (payload.entityType === "Hinzufügen zu") {
+      showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
+      return;
+    }
+  }
+
+  try {
+    const response = await fetch("/api/attributes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      showMessageBox("Attribut erstellt!");
+      if (activeType === "eingabe") {
+        document.getElementById("eingabeAttributName").value = "";
+      }
+      await refreshTreeView();
+      const events = await loadEvent(eventId);
+      updateAllEventUI(events);
+    } else {
+      const errText = await response.text();
+      console.error("[Attribute] Server error:", response.status, errText);
+      showMessageBox("Fehler beim Erstellen des Attributs!");
+    }
+  } catch (err) {
+    console.error("[Attribute] Fetch error:", err);
+    showMessageBox("Fehler beim Erstellen des Attributs!");
+  }
+});
+
+
+// =========================================================================
+// Tree View
+// =========================================================================
+
+async function refreshTreeView() {
+  const eventId = getCurrentEventId();
+  const grid = document.querySelector(".section-body-event .ressource-grid");
+  if (!eventId) {
+    grid.innerHTML = "";
+    return;
+  }
+  try {
+    const [treeRes, unlinkedRes] = await Promise.all([
+      fetch(`/api/resources/${eventId}/tree`).then(r => r.json()),
+      fetch(`/api/unlinked-entities?eventId=${eventId}`).then(r => r.json()),
+    ]);
+    renderTreeView(treeRes, unlinkedRes);
+  } catch (err) {
+    console.error("Tree view Fehler:", err);
+  }
+}
+
+function renderTreeView(resources, unlinkedEntities = []) {
+  const grid = document.querySelector(".section-body-event .ressource-grid");
+  grid.innerHTML = "";
+
+  // Update headline with dynamic column count
+  const headlineGrid = document.querySelector(".section-body-event .headline-grid");
+  // Reset headline levels (keep Ressourcen/Attribute labels)
+  const levelLabels = headlineGrid.querySelectorAll("p:not(.text-bold)");
+  // We'll keep the existing headline structure
+
+  let rowIndex = 1;
+  resources.forEach((resource) => {
+    const attrs = resource.attributes;
+    const maxCols = 7; // Grid has 7 columns
+
+    // Resource name button (column 1)
+    const nameBtn = document.createElement("div");
+    nameBtn.className = "button-dark tree-resource-name";
+    nameBtn.style.gridColumn = "1";
+    nameBtn.style.gridRow = `${rowIndex}`;
+    nameBtn.innerHTML = `<p>${resource.entity_type}</p><img src="/static/assets/images/users.svg" alt="Users">`;
+    grid.appendChild(nameBtn);
+
+    // Attribute headers (columns 2+)
+    attrs.forEach((attr, idx) => {
+      if (idx + 2 > maxCols) return;
+      const header = document.createElement("div");
+      header.className = "button-light tree-attr-header";
+      header.style.gridColumn = `${idx + 2}`;
+      header.style.gridRow = `${rowIndex}`;
+      if (attr.isInputField) {
+        header.innerHTML = `<p>${attr.name}</p><img src="/static/assets/images/tv_input.svg" alt="Input">`;
+      } else {
+        header.innerHTML = `<p>${attr.name}</p><img src="/static/assets/images/chevron.svg" alt="Chevron">`;
+      }
+      grid.appendChild(header);
+    });
+    rowIndex++;
+
+    // Instance rows
+    resource.instances.forEach((instance) => {
+      // Empty spacer for resource column
+      const spacer = document.createElement("div");
+      spacer.style.gridColumn = "1";
+      spacer.style.gridRow = `${rowIndex}`;
+      grid.appendChild(spacer);
+
+      // Values
+      attrs.forEach((attr, idx) => {
+        if (idx + 2 > maxCols) return;
+        const cell = document.createElement("div");
+        cell.className = "tree-cell";
+        cell.style.gridColumn = `${idx + 2}`;
+        cell.style.gridRow = `${rowIndex}`;
+        const val = instance[attr.name];
+        cell.innerHTML = `<p>${val !== null && val !== undefined ? val : '-'}</p>`;
+        grid.appendChild(cell);
+      });
+      rowIndex++;
+    });
+
+    // Spacer row between resources
+    rowIndex++;
+  });
+
+  // Show unlinked entities as suggestions
+  if (unlinkedEntities.length > 0) {
+    unlinkedEntities.forEach((entityType) => {
+      const suggestion = document.createElement("div");
+      suggestion.className = "button-light tree-resource-name tree-suggestion clickable";
+      suggestion.style.gridColumn = "1";
+      suggestion.style.gridRow = `${rowIndex}`;
+      suggestion.style.opacity = "0.6";
+      suggestion.style.cursor = "pointer";
+      suggestion.innerHTML = `<p>${entityType}</p><img src="/static/assets/images/plus.svg" alt="Link">`;
+      suggestion.addEventListener("click", async () => {
+        const eventId = getCurrentEventId();
+        if (!eventId) return;
+        try {
+          const response = await fetch("/api/resources/link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entityType, eventInstanceId: eventId }),
+          });
+          if (response.ok) {
+            showMessageBox(`'${entityType}' mit Event verknüpft!`);
+            await refreshTreeView();
+            await refreshDropdowns();
+            const events = await loadEvent(eventId);
+            updateAllEventUI(events);
+          } else {
+            showMessageBox("Fehler beim Verknüpfen!");
+          }
+        } catch (err) {
+          console.error("Link entity Fehler:", err);
+          showMessageBox("Fehler beim Verknüpfen!");
+        }
+      });
+      grid.appendChild(suggestion);
+      rowIndex++;
+    });
+  }
+}
+
+
+// =========================================================================
+// Dynamic Dropdowns
+// =========================================================================
+
+async function refreshDropdowns() {
+  const eventId = getCurrentEventId();
+  if (!eventId) return;
+
+  try {
+    const response = await fetch(`/api/entity-types?eventId=${eventId}`);
+    const types = await response.json();
+
+    // Populate "Hinzufügen zu" dropdowns
+    const hinzufuegenIds = [
+      "apiHinzufuegenDropdown",
+      "resHinzufuegenDropdown",
+      "eingabeHinzufuegenDropdown",
+    ];
+    hinzufuegenIds.forEach((ddId) => {
+      const dd = document.getElementById(ddId);
+      if (!dd) return;
+      dd.innerHTML = "";
+      types.forEach((type) => {
+        const item = document.createElement("div");
+        item.className = "dropdown-item clickable";
+        item.innerHTML = `<p>${type}</p>`;
+        dd.appendChild(item);
+      });
+    });
+
+    // Populate "Ressource wählen" dropdown
+    const resDropdown = document.getElementById("resRessourceDropdown");
+    if (resDropdown) {
+      resDropdown.innerHTML = "";
+      types.forEach((type) => {
+        const item = document.createElement("div");
+        item.className = "dropdown-item clickable";
+        item.innerHTML = `<p>${type}</p>`;
+        resDropdown.appendChild(item);
+      });
+    }
+  } catch (err) {
+    console.error("Dropdown refresh Fehler:", err);
+  }
+}
+
+// When a resource is selected in "Ressource wählen", load its attributes
+const resRessourceDropdown = document.getElementById("resRessourceDropdown");
+resRessourceDropdown.addEventListener("click", async (e) => {
+  const item = e.target.closest(".dropdown-item");
+  if (!item) return;
+  const entityType = item.querySelector("p").textContent;
+
+  try {
+    const response = await fetch(`/api/entity-attributes/${encodeURIComponent(entityType)}`);
+    const attrs = await response.json();
+
+    const attrDropdown = document.getElementById("resAttributDropdown");
+    attrDropdown.innerHTML = "";
+    attrs.forEach((attr) => {
+      const attrItem = document.createElement("div");
+      attrItem.className = "dropdown-item clickable";
+      attrItem.innerHTML = `<p>${attr.attribute_name}</p>`;
+      attrDropdown.appendChild(attrItem);
+    });
+  } catch (err) {
+    console.error("Attribut-Dropdown Fehler:", err);
+  }
 });

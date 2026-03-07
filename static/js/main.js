@@ -98,12 +98,16 @@ export async function loadEvent(eventId) {
 export function updateAllEventUI(events) {
     if (!events || !events.current_event) return;
     const ev = events.current_event;
+    window._currentEventId = ev.id;
     updateEventDetails(ev.name, ev.created_at, ev.duration);
     updateEventDropdown(events.all_events);
     updateMessageHistory(ev.messages);
     updateRessourceStatistics(ev.statistics);
     updateInteractionStatistics(ev.statistics);
     updateInteractionTree(ev.statistics["required-fields"], ev.statistics["required-remaining"]);
+    // Update tree view section header
+    const treeTitle = document.getElementById("treeViewEventName");
+    if (treeTitle) treeTitle.textContent = ev.name || "Event wählen";
 }
 export function openDropdown() {
     const dropdownEventsContainer = document.getElementById("dropdownEvents");
@@ -211,6 +215,8 @@ export function updateEventDropdown(events){
                 ? await loadEvents()
                 : await loadEvent(event["id"]);
             updateAllEventUI(events);
+            // Dispatch custom event so planen.js can refresh tree/dropdowns
+            window.dispatchEvent(new CustomEvent("eventSelected"));
         });
 
         dropdownEventsContainer.appendChild(eventItem);
@@ -365,6 +371,7 @@ export function updateInteractionStatistics(stats){
 export function updateInteractionTree(requiredFields, requiredRemaining){
     const interactionTreeImg = document.getElementById("interactionTreeImg");
     const interactionTreeText = document.getElementById("reqrem-interaction-tree");
+    if (!interactionTreeImg || !interactionTreeText) return;
 
     const completed = requiredFields - requiredRemaining;
     const requiredCompletedRatio = completed / requiredFields;

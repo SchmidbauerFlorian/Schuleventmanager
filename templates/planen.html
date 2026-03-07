@@ -329,7 +329,7 @@
             <div class="section-head">
                 <div>
                     <img src="{{ url_for('static', filename='assets/images/ticket-event.svg') }}" alt="Event Icon">
-                    <h3>Wintersportwoche</h3>
+                    <h3 id="treeViewEventName">Event wählen</h3>
                 </div>
                 <div class="clickable" id="btnExpandTreeView">
                     <img id="iconExpandTreeView" src="{{ url_for('static', filename='assets/images/arrow-expand.svg') }}" alt="Arrow Expand Icon">
@@ -423,9 +423,10 @@
                                 <p id="apiBerechtigungSelectedText">Berechtigung</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="apiBerechtigungDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Öffentlich</p></div>
-                                    <div class="dropdown-item clickable"><p>Nur Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Privat</p></div>
+                                    <div class="dropdown-item clickable"><p>read_public</p></div>
+                                    <div class="dropdown-item clickable"><p>write_public</p></div>
+                                    <div class="dropdown-item clickable"><p>teachers_only</p></div>
+                                    <div class="dropdown-item clickable"><p>owner_only</p></div>
                                 </div>
                             </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiHinzufuegenDropdownBtn">
@@ -433,9 +434,7 @@
                                 <p id="apiHinzufuegenSelectedText">Hinzufügen zu</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="apiHinzufuegenDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
-                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                    <!-- Dynamisch befüllt via JS -->
                                 </div>
                             </div>
                         </div>
@@ -446,9 +445,7 @@
                                 <p id="resRessourceSelectedText">Ressource wählen</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="resRessourceDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
-                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Räume</p></div>
+                                    <!-- Dynamisch befüllt via JS -->
                                 </div>
                             </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="resAttributDropdownBtn">
@@ -456,9 +453,7 @@
                                 <p id="resAttributSelectedText">Attribut der Ressource wählen</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="resAttributDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Name</p></div>
-                                    <div class="dropdown-item clickable"><p>Email</p></div>
-                                    <div class="dropdown-item clickable"><p>Klasse</p></div>
+                                    <!-- Dynamisch befüllt via JS -->
                                 </div>
                             </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="resHinzufuegenDropdownBtn">
@@ -466,9 +461,7 @@
                                 <p id="resHinzufuegenSelectedText">Hinzufügen zu</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="resHinzufuegenDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
-                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                    <!-- Dynamisch befüllt via JS -->
                                 </div>
                             </div>
                         </div>
@@ -483,9 +476,10 @@
                                 <p id="eingabeBerechtigungSelectedText">Berechtigung</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="eingabeBerechtigungDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Öffentlich</p></div>
-                                    <div class="dropdown-item clickable"><p>Nur Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Privat</p></div>
+                                    <div class="dropdown-item clickable"><p>read_public</p></div>
+                                    <div class="dropdown-item clickable"><p>write_public</p></div>
+                                    <div class="dropdown-item clickable"><p>teachers_only</p></div>
+                                    <div class="dropdown-item clickable"><p>owner_only</p></div>
                                 </div>
                             </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeFormatDropdownBtn">
@@ -514,9 +508,7 @@
                                 <p id="eingabeHinzufuegenSelectedText">Hinzufügen zu</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="eingabeHinzufuegenDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable"><p>Schüler</p></div>
-                                    <div class="dropdown-item clickable"><p>Lehrer</p></div>
-                                    <div class="dropdown-item clickable"><p>Alle</p></div>
+                                    <!-- Dynamisch befüllt via JS -->
                                 </div>
                             </div>
                         </div>

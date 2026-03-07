@@ -1,5 +1,9 @@
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
-from services.event_service import create_event, delete_event, get_events, get_event
+from services.event_service import (create_event, delete_event, get_events, get_event,
+                                     create_resource as svc_create_resource,
+                                     create_event_attribute, get_tree_data,
+                                     get_entity_types_for_event, get_entity_attrs,
+                                     link_entity_to_event, get_unlinked_entities)
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -107,6 +111,67 @@ def api_delete_event():
     data = request.get_json()
     event = delete_event(data["eventName"])
     return jsonify(event), 200
+
+
+@app.route('/api/resources', methods=['POST'])
+def api_create_resource():
+    data = request.get_json()
+    resource_name = data.get('resourceName')
+    groups = data.get('groups', [])
+    event_id = data.get('eventInstanceId')
+    if not resource_name or not event_id:
+        return jsonify({"error": "Missing resourceName or eventInstanceId"}), 400
+    result = svc_create_resource(resource_name, groups, event_id)
+    return jsonify(result), 200
+
+
+@app.route('/api/attributes', methods=['POST'])
+def api_create_attribute():
+    data = request.get_json()
+    attr_type = data.get('type')
+    event_id = data.get('eventInstanceId')
+    result = create_event_attribute(attr_type, data, event_id)
+    return jsonify(result), 200
+
+
+@app.route('/api/resources/<int:event_id>/tree', methods=['GET'])
+def api_get_tree(event_id):
+    tree = get_tree_data(event_id)
+    return jsonify(tree), 200
+
+
+@app.route('/api/entity-types', methods=['GET'])
+def api_get_entity_types():
+    event_id = request.args.get('eventId', type=int)
+    types = get_entity_types_for_event(event_id)
+    return jsonify(types), 200
+
+
+@app.route('/api/entity-attributes/<entity_type>', methods=['GET'])
+def api_get_entity_attributes(entity_type):
+    attrs = get_entity_attrs(entity_type)
+    return jsonify(attrs), 200
+
+
+@app.route('/api/resources/link', methods=['POST'])
+def api_link_entity():
+    data = request.get_json()
+    entity_type = data.get('entityType')
+    event_id = data.get('eventInstanceId')
+    if not entity_type or not event_id:
+        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
+    result = link_entity_to_event(entity_type, event_id)
+    return jsonify(result), 200
+
+
+@app.route('/api/unlinked-entities', methods=['GET'])
+def api_get_unlinked_entities():
+    event_id = request.args.get('eventId', type=int)
+    if not event_id:
+        return jsonify([]), 200
+    entities = get_unlinked_entities(event_id)
+    return jsonify(entities), 200
+
 
 if __name__ == '__main__':
     app.run(host='localhost', port=5000, debug=True)

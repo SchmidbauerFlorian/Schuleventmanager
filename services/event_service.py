@@ -119,3 +119,50 @@ def get_events(user_id) -> dict:
     if not all_stats:
         return {"current_event": None, "all_events": []}
     return _build_aggregate_response(all_stats)
+
+
+# =========================================================================
+# Resource & Attribute Management
+# =========================================================================
+
+def create_resource(resource_name: str, groups: list, event_instance_id: int) -> dict:
+    rel_id = queries.create_resource_for_event(resource_name, groups, event_instance_id)
+    return {"status": "ok", "relation_id": rel_id}
+
+
+def create_event_attribute(attr_type: str, data: dict, event_instance_id: int) -> dict:
+    if attr_type == "api":
+        queries.add_api_attribute_to_resource(data.get('entityType'), data.get('field'))
+        return {"status": "ok"}
+    elif attr_type == "ressource":
+        rel_id = queries.create_dependent_resource_relation(
+            data.get('sourceEntity'), data.get('targetEntity'))
+        return {"status": "ok", "relation_id": rel_id}
+    elif attr_type == "eingabe":
+        rel_id = queries.add_input_attribute_to_event_relation(
+            data.get('entityType'), event_instance_id,
+            data.get('attributeName'), data.get('datatype', 'Text'),
+            data.get('isRequired', False), data.get('expirationDate'))
+        return {"status": "ok", "relation_id": rel_id}
+    return {"status": "error", "message": "Unknown type"}
+
+
+def get_tree_data(event_instance_id: int) -> list:
+    return queries.get_event_tree_data(event_instance_id)
+
+
+def get_entity_types_for_event(event_instance_id) -> list:
+    return queries.get_event_entity_types(event_instance_id)
+
+
+def get_entity_attrs(entity_type: str) -> list:
+    return queries.get_entity_type_attributes_list(entity_type)
+
+
+def link_entity_to_event(entity_type: str, event_instance_id: int) -> dict:
+    rel_id = queries.link_existing_entity_to_event(entity_type, event_instance_id)
+    return {"status": "ok", "relation_id": rel_id}
+
+
+def get_unlinked_entities(event_instance_id: int) -> list:
+    return queries.get_unlinked_entity_types(event_instance_id)

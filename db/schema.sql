@@ -58,7 +58,7 @@ CREATE TABLE t_attribute (
     fk_datatype_id INTEGER NOT NULL COMMENT 'Foreign key referencing datatype',
     attribute_name VARCHAR(255) NOT NULL COMMENT 'Name of the attribute',
     is_unique BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Indicates if this attribute is a unique identifier (PK)',
-    access ENUM('read', 'read/write') NOT NULL DEFAULT 'read/write' COMMENT 'Access level for this attribute',
+    access ENUM('read_public', 'write_public', 'teachers_only', 'owner_only') NOT NULL DEFAULT 'write_public' COMMENT 'Access level for this attribute',
     isPrivate BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, attribute is hidden from public views',
     expirationDate DATE DEFAULT NULL COMMENT 'When elapsed, access automatically shifts to read',
     isRequired BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute must be provided on instance creation',
@@ -557,12 +557,12 @@ CREATE OR REPLACE PROCEDURE add_relation_attribute(
 BEGIN
     DECLARE v_datatype_id INT;
     DECLARE v_attr_id INT;
-    DECLARE v_access ENUM('read', 'read/write');
+    DECLARE v_access ENUM('read_public', 'write_public', 'teachers_only', 'owner_only');
 
     SELECT datatype_id INTO v_datatype_id FROM t_datatype WHERE datatype = p_datatype;
 
-    -- InputFields get read/write access; otherwise default read
-    SET v_access = IF(IFNULL(p_isInputField, FALSE), 'read/write', 'read');
+    -- InputFields get write_public access; otherwise default read_public
+    SET v_access = IF(IFNULL(p_isInputField, FALSE), 'write_public', 'read_public');
 
     INSERT INTO t_attribute(
         fk_entity_id, fk_datatype_id, attribute_name, is_unique,
@@ -1163,10 +1163,10 @@ CREATE EVENT evt_expire_attribute_access
     STARTS CURRENT_DATE + INTERVAL 0 SECOND
     DO
         UPDATE t_attribute
-        SET access = 'read'
+        SET access = 'read_public'
         WHERE expirationDate IS NOT NULL
           AND expirationDate < CURDATE()
-          AND access != 'read';
+          AND access != 'read_public';
 
 -- ============================================================================
 -- PART 3: Data Population (Entities, Instances, Relations)
@@ -1225,7 +1225,7 @@ SELECT '--- 4. CREATE ENTITY TYPES ---' AS Step;
 --   Student: name(required), email(required), class, uid
 CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE, '1,1,0,0');
 --   Event: name(required), date(required), location
-CALL create_entity_with_attributes('Event',   'name,date,location',      'VARCHAR,DATE,VARCHAR',            TRUE,  '1,1,0');
+--   CALL create_entity_with_attributes('Event',   'name,date,location',      'VARCHAR,DATE,VARCHAR',            TRUE,  '1,1,0');
 --   Teacher: name(required), email(required), uid
 CALL create_entity_with_attributes('Teacher', 'name,email,uid',          'VARCHAR,VARCHAR,INTEGER',         FALSE, '1,1,0');
 --   Room: name(required), capacity
@@ -1241,9 +1241,11 @@ CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max M
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2');  -- 2
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3');       -- 3
 -- Events
+/*
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1');               -- 4
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2');        -- 5
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3');  -- 6
+*/
 -- Teachers
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1');                  -- 7
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2');                  -- 8
@@ -1254,6 +1256,7 @@ CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2
 -- ---------------------------------------------------------------------------
 -- 6. RELATION DEFINITIONS
 -- ---------------------------------------------------------------------------
+/*
 SELECT '--- 6. DEFINE RELATIONS ---' AS Step;
 -- add_relation_attribute(relation_id, name, datatype, isInputField, isRequired, isSingularRessource, expirationDate)
 
@@ -1343,7 +1346,7 @@ SELECT '--- FILL_DB COMPLETED ---' AS Message;
 -- TEST: create_entity_instances_from_users
 -- Requires Entity-Types 'Student' and 'Teacher' to already exist (see Part 3 above)
 -- ============================================================================
-
+*/
 -- Insert test users into t_users
 INSERT INTO t_users (display_name, email, job_title) VALUES
     ('Elena Fischer',   'ef@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
@@ -1372,4 +1375,4 @@ INSERT INTO t_users (display_name, email, job_title) VALUES
 -- CALL create_entity_instances_from_users(NULL, NULL);
 
 -- Test: create_attribute with isRequired=TRUE (isListRessource is always TRUE for entity attributes)
-CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
+-- CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
