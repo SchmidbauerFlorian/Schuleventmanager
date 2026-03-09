@@ -902,7 +902,7 @@ def get_event_tree_data(event_instance_id: int):
             iid_to_riid = {}
             for r in instance_rows:
                 iid_to_riid[r['entity_instance_id']] = r['relation_instance_id']
-            iids = list(iid_to_riid.keys())
+            iids = sorted(iid_to_riid.keys(), reverse=True)
 
             instances = []
             for iid in iids:

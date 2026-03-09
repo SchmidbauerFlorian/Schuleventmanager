@@ -34,20 +34,32 @@ expandTreeViewBtn.addEventListener("click", (e) => {
     sectionEvent.style.padding = "calc(var(--space) * 4)";
 
     sectionBodyEvent.style.height = "388px";
+    sectionBodyEvent.style.flex = "";
+    sectionBodyEvent.style.minHeight = "";
 
     sectionBodyEventExtended.style.display = "none";
 
     expandedContainer.style.width = "100%";
     expandedContainer.style.margin = "0";
+    expandedContainer.style.display = "";
+    expandedContainer.style.flexDirection = "";
+    expandedContainer.style.height = "";
 
     iconExpandTreeView.src = "/static/assets/images/arrow-expand.svg";
+    sectionBodyEvent.classList.remove('expanded');
   }
   else{
     sectionEvent.style.position = "fixed";
     sectionEvent.style.borderRadius = "0";
     sectionEvent.style.padding = "calc(var(--space) * 2)";
 
-    sectionBodyEvent.style.height = "auto";
+    expandedContainer.style.display = "flex";
+    expandedContainer.style.flexDirection = "column";
+    expandedContainer.style.height = "100%";
+
+    sectionBodyEvent.style.height = "0";
+    sectionBodyEvent.style.flex = "1";
+    sectionBodyEvent.style.minHeight = "0";
 
     sectionBodyEventExtended.style.display = "flex";
 
@@ -55,6 +67,7 @@ expandTreeViewBtn.addEventListener("click", (e) => {
     expandedContainer.style.margin = "0 auto";
 
     iconExpandTreeView.src = "/static/assets/images/overlay-close.svg";
+    sectionBodyEvent.classList.add('expanded');
   }
 });
 createEventBtn.addEventListener("click", (e) => {
@@ -578,7 +591,7 @@ function startInlineEdit(cell, instance, attr, resource) {
       setTimeout(() => {
         if (!saved && cell.contains(select)) {
           const newP = document.createElement('p');
-          newP.textContent = instance[attr.name] || '';
+          newP.textContent = formatDisplayValue(instance[attr.name], attr.datatype);
           select.replaceWith(newP);
         }
       }, 150);
@@ -652,6 +665,16 @@ function startInlineEdit(cell, instance, attr, resource) {
   });
 }
 
+function formatDisplayValue(val, datatype) {
+  if (val === null || val === undefined || val === '') return '';
+  const dtype = (datatype || '').toUpperCase();
+  if (dtype === 'DATE' && typeof val === 'string' && val.includes('-')) {
+    const parts = val.split('-');
+    if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+  return String(val);
+}
+
 function renderTreeView(resources, unlinkedEntities = []) {
   const grid = document.querySelector(".section-body-event .ressource-grid");
   grid.innerHTML = "";
@@ -675,15 +698,18 @@ function renderTreeView(resources, unlinkedEntities = []) {
     headlineGrid.appendChild(label);
   }
 
-  let rowIndex = 1;
   resources.forEach((resource) => {
     const attrs = resource.attributes;
+    const block = document.createElement("div");
+    block.className = "tree-resource-block";
 
-    // Resource name button (column 1)
+    // Header row (resource name + attribute headers)
+    const headerRow = document.createElement("div");
+    headerRow.className = "tree-resource-header-row";
+    headerRow.style.gridTemplateColumns = `repeat(${totalCols}, 246px)`;
+
     const nameBtn = document.createElement("div");
     nameBtn.className = "button-dark tree-resource-name";
-    nameBtn.style.gridColumn = "1";
-    nameBtn.style.gridRow = `${rowIndex}`;
     if (resource.hasPersons) {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p><img src="/static/assets/images/users.svg" alt="Users">`;
     } else if (attrs.length > 0) {
@@ -701,14 +727,11 @@ function renderTreeView(resources, unlinkedEntities = []) {
     } else {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
     }
-    grid.appendChild(nameBtn);
+    headerRow.appendChild(nameBtn);
 
-    // Attribute headers (columns 2+)
-    attrs.forEach((attr, idx) => {
+    attrs.forEach((attr) => {
       const header = document.createElement("div");
       header.className = "button-light tree-attr-header";
-      header.style.gridColumn = `${idx + 2}`;
-      header.style.gridRow = `${rowIndex}`;
       let attrIcon;
       if (attr.isInputField) {
         attrIcon = '/static/assets/images/tv_input.svg';
@@ -718,29 +741,31 @@ function renderTreeView(resources, unlinkedEntities = []) {
         attrIcon = '/static/assets/images/tv_ressource.svg';
       }
       header.innerHTML = `<p>${attr.name}</p><img src="${attrIcon}" alt="Type">`;
-      grid.appendChild(header);
+      headerRow.appendChild(header);
     });
-    rowIndex++;
+    block.appendChild(headerRow);
 
-    // Instance rows
+    // Scrollable entries container
+    const entriesContainer = document.createElement("div");
+    entriesContainer.className = "tree-entries-container";
+
     resource.instances.forEach((instance) => {
+      const entryRow = document.createElement("div");
+      entryRow.className = "tree-entry-row";
+      entryRow.style.gridTemplateColumns = `repeat(${totalCols}, 246px)`;
+
       // Empty spacer for resource column
       const spacer = document.createElement("div");
-      spacer.style.gridColumn = "1";
-      spacer.style.gridRow = `${rowIndex}`;
-      grid.appendChild(spacer);
+      entryRow.appendChild(spacer);
 
       // Values
-      attrs.forEach((attr, idx) => {
+      attrs.forEach((attr) => {
         const cell = document.createElement("div");
         cell.className = "tree-cell";
-        cell.style.gridColumn = `${idx + 2}`;
-        cell.style.gridRow = `${rowIndex}`;
         const val = instance[attr.name];
-        const displayVal = val !== null && val !== undefined ? val : '';
+        const displayVal = formatDisplayValue(val, attr.datatype);
 
         if (attr.isSingularRessource && attr.ref_entity_type && attr.ref_attribute_name) {
-          // Dependent resource with reference → dropdown of source values
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/chevron.svg" alt="Select" class="tree-cell-icon">`;
           cell.classList.add('tree-cell-editable');
           cell.querySelector('.tree-cell-icon').addEventListener('click', async (e) => {
@@ -794,17 +819,14 @@ function renderTreeView(resources, unlinkedEntities = []) {
             }
           });
         } else if (attr.isSingularRessource) {
-          // Dependent resource → dropdown
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/chevron.svg" alt="Select" class="tree-cell-icon">`;
           cell.classList.add('tree-cell-editable');
           cell.querySelector('.tree-cell-icon').addEventListener('click', async (e) => {
             e.stopPropagation();
-            // Check if dropdown already open
             if (cell.querySelector('.tree-cell-dropdown')) {
               cell.querySelector('.tree-cell-dropdown').remove();
               return;
             }
-            // Fetch entries from linked resource
             try {
               const res = await fetch(`/api/entity-instances/${encodeURIComponent(attr.name)}`);
               const entries = await res.json();
@@ -843,20 +865,19 @@ function renderTreeView(resources, unlinkedEntities = []) {
             }
           });
         } else {
-          // Eingabe / API attribute → editable text
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/tv_input.svg" alt="Edit" class="tree-cell-icon">`;
           cell.querySelector('.tree-cell-icon').addEventListener('click', (e) => {
             e.stopPropagation();
             startInlineEdit(cell, instance, attr, resource);
           });
         }
-        grid.appendChild(cell);
+        entryRow.appendChild(cell);
       });
-      rowIndex++;
+      entriesContainer.appendChild(entryRow);
     });
 
-    // Spacer row between resources
-    rowIndex++;
+    block.appendChild(entriesContainer);
+    grid.appendChild(block);
   });
 }
 
