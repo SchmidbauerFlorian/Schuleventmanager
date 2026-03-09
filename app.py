@@ -3,7 +3,11 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      create_resource as svc_create_resource,
                                      create_event_attribute, get_tree_data,
                                      get_entity_types_for_event, get_entity_attrs,
-                                     link_entity_to_event, get_unlinked_entities)
+                                     link_entity_to_event, get_unlinked_entities,
+                                     add_list_entry as svc_add_list_entry,
+                                     update_instance_value as svc_update_instance_value,
+                                     get_entity_instances as svc_get_entity_instances,
+                                     get_reference_values as svc_get_reference_values)
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -130,8 +134,11 @@ def api_create_attribute():
     data = request.get_json()
     attr_type = data.get('type')
     event_id = data.get('eventInstanceId')
-    result = create_event_attribute(attr_type, data, event_id)
-    return jsonify(result), 200
+    try:
+        result = create_event_attribute(attr_type, data, event_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/resources/<int:event_id>/tree', methods=['GET'])
@@ -143,7 +150,12 @@ def api_get_tree(event_id):
 @app.route('/api/entity-types', methods=['GET'])
 def api_get_entity_types():
     event_id = request.args.get('eventId', type=int)
-    types = get_entity_types_for_event(event_id)
+    detailed = request.args.get('detailed', type=int, default=0)
+    if detailed:
+        from services.event_service import get_entity_types_detailed
+        types = get_entity_types_detailed(event_id)
+    else:
+        types = get_entity_types_for_event(event_id)
     return jsonify(types), 200
 
 
@@ -171,6 +183,47 @@ def api_get_unlinked_entities():
         return jsonify([]), 200
     entities = get_unlinked_entities(event_id)
     return jsonify(entities), 200
+
+
+@app.route('/api/list-entry', methods=['POST'])
+def api_add_list_entry():
+    data = request.get_json()
+    entity_type = data.get('entityType')
+    event_id = data.get('eventInstanceId')
+    values = data.get('values', {})
+    if not entity_type or not event_id:
+        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
+    result = svc_add_list_entry(entity_type, event_id, values)
+    return jsonify(result), 200
+
+
+@app.route('/api/update-instance-value', methods=['PUT'])
+def api_update_instance_value():
+    data = request.get_json()
+    instance_id = data.get('instanceId')
+    attr_name = data.get('attributeName')
+    value = data.get('value')
+    source = data.get('source', 'entity')
+    relation_id = data.get('relationId')
+    rel_instance_id = data.get('relInstanceId')
+    if not instance_id or not attr_name:
+        return jsonify({"error": "Missing instanceId or attributeName"}), 400
+    result = svc_update_instance_value(instance_id, attr_name, value,
+                                       source, relation_id, rel_instance_id)
+    return jsonify(result), 200
+
+
+@app.route('/api/entity-instances/<entity_type>', methods=['GET'])
+def api_get_entity_instances(entity_type):
+    instances = svc_get_entity_instances(entity_type)
+    return jsonify(instances), 200
+
+
+@app.route('/api/reference-values/<entity_type>/<attribute_name>', methods=['GET'])
+def api_get_reference_values(entity_type, attribute_name):
+    event_id = request.args.get('eventId', type=int)
+    values = svc_get_reference_values(entity_type, attribute_name, event_id)
+    return jsonify(values), 200
 
 
 if __name__ == '__main__':

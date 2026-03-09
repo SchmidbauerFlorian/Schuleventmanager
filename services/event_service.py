@@ -135,8 +135,9 @@ def create_event_attribute(attr_type: str, data: dict, event_instance_id: int) -
         queries.add_api_attribute_to_resource(data.get('entityType'), data.get('field'))
         return {"status": "ok"}
     elif attr_type == "ressource":
-        rel_id = queries.create_dependent_resource_relation(
-            data.get('sourceEntity'), data.get('targetEntity'))
+        rel_id = queries.add_dependent_resource_attribute(
+            data.get('targetEntity'), event_instance_id,
+            data.get('sourceEntity'), data.get('sourceAttribute'))
         return {"status": "ok", "relation_id": rel_id}
     elif attr_type == "eingabe":
         rel_id = queries.add_input_attribute_to_event_relation(
@@ -155,6 +156,10 @@ def get_entity_types_for_event(event_instance_id) -> list:
     return queries.get_event_entity_types(event_instance_id)
 
 
+def get_entity_types_detailed(event_instance_id) -> list:
+    return queries.get_event_entity_types_detailed(event_instance_id)
+
+
 def get_entity_attrs(entity_type: str) -> list:
     return queries.get_entity_type_attributes_list(entity_type)
 
@@ -166,3 +171,27 @@ def link_entity_to_event(entity_type: str, event_instance_id: int) -> dict:
 
 def get_unlinked_entities(event_instance_id: int) -> list:
     return queries.get_unlinked_entity_types(event_instance_id)
+
+
+def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> dict:
+    instance_id = queries.add_list_entry(entity_type, event_instance_id, values)
+    return {"status": "ok", "instance_id": instance_id}
+
+
+def update_instance_value(instance_id: int, attribute_name: str, value: str,
+                          source: str = 'entity', relation_id: int = None,
+                          rel_instance_id: int = None) -> dict:
+    if source == 'relation' and relation_id and rel_instance_id:
+        queries.update_relation_instance_value(relation_id, rel_instance_id,
+                                               attribute_name, value)
+    else:
+        queries.update_entity_instance(instance_id, attribute_name, value)
+    return {"status": "ok"}
+
+
+def get_entity_instances(entity_type: str) -> list:
+    return queries.get_entity_instances(entity_type)
+
+
+def get_reference_values(entity_type: str, attribute_name: str, event_instance_id: int) -> list:
+    return queries.get_reference_values(entity_type, attribute_name, event_instance_id)

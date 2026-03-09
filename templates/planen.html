@@ -336,17 +336,9 @@
                 </div>
             </div>
             <div id="section-body-event" class="section-body-event">
-                <div class="headline-grid">
+                <div class="headline-grid" id="headlineGrid">
                     <p class="text-bold">Ressourcen</p>
                     <p id="attribute-headline" class="text-bold">Attribute</p>
-
-                    <p>Ebene 0</p>
-                    <p>Ebene 1</p>
-                    <p>Ebene 2</p>
-                    <p>Ebene 3</p>
-                    <p>Ebene 4</p>
-                    <p>Ebene 5</p>
-                    <p>Ebene 6</p>
                 </div>
                 <div class="ressource-grid">
                     <!-- TREE VIEW HIER -->
@@ -410,12 +402,12 @@
                         <div id="attributFieldsApi" class="attribut-fields" style="display:none;">
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiEmailDropdownBtn">
                                 <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
-                                <p id="apiEmailSelectedText">Email</p>
+                                <p id="apiEmailSelectedText">Endpunkt</p>
                                 <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
                                 <div id="apiEmailDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable"><p>Name</p></div>
                                     <div class="dropdown-item clickable"><p>Email</p></div>
-                                    <div class="dropdown-item clickable"><p>Telefonnummer</p></div>
-                                    <div class="dropdown-item clickable"><p>Adresse</p></div>
+                                    <div class="dropdown-item clickable"><p>Klasse</p></div>
                                 </div>
                             </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="apiBerechtigungDropdownBtn">

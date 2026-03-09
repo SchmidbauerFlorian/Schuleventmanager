@@ -66,6 +66,8 @@ CREATE TABLE t_attribute (
     isListRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute is a list resource (entity attribute)',
     isSingularRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this relation attribute accepts only a single value',
     isPersonRessource BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this is a person resource (entity attribute where entity = Student or Teacher)',
+    ref_entity_type VARCHAR(255) DEFAULT NULL COMMENT 'Source entity type for dependent resource attributes',
+    ref_attribute_name VARCHAR(255) DEFAULT NULL COMMENT 'Source attribute name for dependent resource attributes',
     
     CONSTRAINT fk_attribute_entity 
         FOREIGN KEY (fk_entity_id) 
@@ -323,8 +325,8 @@ BEGIN
     SET v_attr_len = get_list_length(p_attribute_names);
     SET v_dtype_len = get_list_length(p_datatypes);
 
-    IF v_attr_len = 0 OR v_attr_len != v_dtype_len THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute names and datatypes must be non-empty lists of equal length';
+    IF v_attr_len != v_dtype_len THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Attribute names and datatypes must be lists of equal length';
     END IF;
 
     -- Check and create Entity
@@ -342,7 +344,7 @@ BEGIN
             LOWER(p_entity_type) IN ('student', 'teacher'));
 
     -- Create other attributes (all entity attributes are automatically isListRessource=TRUE)
-    WHILE i <= v_attr_len DO
+    WHILE i <= v_attr_len AND v_attr_len > 0 DO
         SET v_attr_name = get_list_element(p_attribute_names, i);
         SET v_dtype_name = get_list_element(p_datatypes, i);
 
@@ -404,12 +406,14 @@ BEGIN
     END IF;
 
     -- Create attribute (entity attributes are always isListRessource=TRUE)
+    -- Inherit isPersonRessource from existing attributes of same entity
     INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isListRessource, isPersonRessource)
     VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE,
-            (SELECT LOWER(entity_type) IN ('student', 'teacher') FROM t_entity WHERE entity_id = v_entity_id));
+            IFNULL((SELECT MAX(isPersonRessource) FROM t_attribute WHERE fk_entity_id = v_entity_id), FALSE));
     SET v_attr_id = LAST_INSERT_ID();
 
     -- Backfill existing instances with NULL value
+    SET done = FALSE;
     OPEN cur_instances;
     backfill_loop: LOOP
         FETCH cur_instances INTO v_inst_id;
@@ -458,6 +462,7 @@ BEGIN
 
     SET v_instance_id = NEXTVAL(seq_entity_instance_id);
 
+    SET done = FALSE;
     OPEN cur_attrs;
     read_loop: LOOP
         FETCH cur_attrs INTO v_attr_id, v_attr_name_db, v_attr_is_unique;
@@ -552,7 +557,9 @@ CREATE OR REPLACE PROCEDURE add_relation_attribute(
     IN p_isInputField         BOOLEAN,
     IN p_isRequired           BOOLEAN,
     IN p_isSingularRessource  BOOLEAN,
-    IN p_expirationDate       DATE
+    IN p_expirationDate       DATE,
+    IN p_ref_entity_type      VARCHAR(255),
+    IN p_ref_attribute_name   VARCHAR(255)
 )
 BEGIN
     DECLARE v_datatype_id INT;
@@ -567,12 +574,12 @@ BEGIN
     INSERT INTO t_attribute(
         fk_entity_id, fk_datatype_id, attribute_name, is_unique,
         isInputField, isRequired, isSingularRessource,
-        access, expirationDate
+        access, expirationDate, ref_entity_type, ref_attribute_name
     )
     VALUES (
         NULL, v_datatype_id, p_attribute_name, FALSE,
         IFNULL(p_isInputField, FALSE), IFNULL(p_isRequired, FALSE), IFNULL(p_isSingularRessource, FALSE),
-        v_access, p_expirationDate
+        v_access, p_expirationDate, p_ref_entity_type, p_ref_attribute_name
     );
     
     SET v_attr_id = LAST_INSERT_ID();

@@ -393,6 +393,10 @@ btnCreateAttribut.addEventListener("click", async (e) => {
 
   if (activeType === "api") {
     payload.field = document.getElementById("apiEmailSelectedText").textContent;
+    if (payload.field === "Endpunkt") {
+      showMessageBox("Fehler: Bitte API-Endpunkt wählen (Name, Email oder Klasse)!");
+      return;
+    }
     payload.permission = document.getElementById("apiBerechtigungSelectedText").textContent;
     payload.entityType = document.getElementById("apiHinzufuegenSelectedText").textContent;
     if (payload.entityType === "Hinzufügen zu") {
@@ -403,8 +407,8 @@ btnCreateAttribut.addEventListener("click", async (e) => {
     payload.sourceEntity = document.getElementById("resRessourceSelectedText").textContent;
     payload.sourceAttribute = document.getElementById("resAttributSelectedText").textContent;
     payload.targetEntity = document.getElementById("resHinzufuegenSelectedText").textContent;
-    if (payload.sourceEntity === "Ressource wählen" || payload.targetEntity === "Hinzufügen zu") {
-      showMessageBox("Fehler: Bitte Ressourcen auswählen!");
+    if (payload.sourceEntity === "Ressource wählen" || payload.targetEntity === "Hinzufügen zu" || payload.sourceAttribute === "Attribut der Ressource wählen") {
+      showMessageBox("Fehler: Bitte alle Felder auswählen!");
       return;
     }
   } else if (activeType === "eingabe") {
@@ -415,6 +419,10 @@ btnCreateAttribut.addEventListener("click", async (e) => {
     }
     payload.permission = document.getElementById("eingabeBerechtigungSelectedText").textContent;
     payload.datatype = document.getElementById("eingabeFormatSelectedText").textContent;
+    if (payload.datatype === "Formatvorgabe") {
+      showMessageBox("Fehler: Bitte Formatvorgabe wählen (Text, Zahl oder Datum)!");
+      return;
+    }
     payload.expirationDate = document.getElementById("eingabeZeitlimitDate").value || null;
     payload.isRequired = isPflichtfeld;
     payload.entityType = document.getElementById("eingabeHinzufuegenSelectedText").textContent;
@@ -438,9 +446,10 @@ btnCreateAttribut.addEventListener("click", async (e) => {
       }
       await refreshTreeView();
     } else {
-      const errText = await response.text();
-      console.error("[Attribute] Server error:", response.status, errText);
-      showMessageBox("Fehler beim Erstellen des Attributs!");
+      const errData = await response.json().catch(() => null);
+      const errMsg = errData?.error || `Server error ${response.status}`;
+      console.error("[Attribute] Server error:", response.status, errMsg);
+      showMessageBox("Fehler: " + errMsg);
     }
   } catch (err) {
     console.error("[Attribute] Fetch error:", err);
@@ -452,6 +461,8 @@ btnCreateAttribut.addEventListener("click", async (e) => {
 // =========================================================================
 // Tree View
 // =========================================================================
+
+let cachedTreeData = [];
 
 async function refreshTreeView() {
   const eventId = getCurrentEventId();
@@ -465,6 +476,7 @@ async function refreshTreeView() {
       fetch(`/api/resources/${eventId}/tree`).then(r => r.json()),
       fetch(`/api/unlinked-entities?eventId=${eventId}`).then(r => r.json()),
     ]);
+    cachedTreeData = treeRes;
     renderTreeView(treeRes, unlinkedRes);
 
     // Refresh event statistics after tree view changes
@@ -475,41 +487,237 @@ async function refreshTreeView() {
   }
 }
 
+async function addListEntry(entityType, attributes) {
+  const eventId = getCurrentEventId();
+  if (!eventId || attributes.length === 0) return;
+
+  try {
+    const values = {};
+    attributes.filter(a => a.source === 'entity').forEach(attr => { values[attr.name] = ''; });
+    await fetch('/api/list-entry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType, eventInstanceId: eventId, values }),
+    });
+    refreshTreeView();
+  } catch (err) {
+    console.error("Listeneintrag Fehler:", err);
+  }
+}
+
+function startInlineEdit(cell, instance, attr, resource) {
+  const p = cell.querySelector('p');
+  if (!p || cell.querySelector('input') || cell.querySelector('select')) return;
+
+  // Dependent resource attribute: show a dropdown of reference values
+  if (attr.isSingularRessource && attr.ref_entity_type && attr.ref_attribute_name) {
+    const eventId = getCurrentEventId();
+    const select = document.createElement('select');
+    select.className = 'tree-cell-input';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '-- wählen --';
+    select.appendChild(emptyOpt);
+    p.replaceWith(select);
+    select.focus();
+
+    fetch(`/api/reference-values/${encodeURIComponent(attr.ref_entity_type)}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`)
+      .then(r => r.json())
+      .then(values => {
+        values.forEach(v => {
+          const opt = document.createElement('option');
+          let displayV = v;
+          const dtype = (attr.datatype || '').toUpperCase();
+          if (dtype === 'DATE' && v && v.includes('-')) {
+            const parts = v.split('-');
+            if (parts.length === 3) displayV = `${parts[2]}.${parts[1]}.${parts[0]}`;
+          }
+          opt.value = v;
+          opt.textContent = displayV;
+          if (v === (instance[attr.name] || '')) opt.selected = true;
+          select.appendChild(opt);
+        });
+      });
+
+    let saved = false;
+    const save = async () => {
+      saved = true;
+      const newVal = select.value;
+      let displayVal = newVal;
+      const dtype = (attr.datatype || '').toUpperCase();
+      if (dtype === 'DATE' && newVal) {
+        const d = new Date(newVal);
+        displayVal = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+      }
+      const newP = document.createElement('p');
+      newP.textContent = displayVal;
+      select.replaceWith(newP);
+      try {
+        const payload = {
+          instanceId: instance._id,
+          attributeName: attr.name,
+          value: newVal,
+          entityType: resource.entity_type,
+          source: attr.source || 'entity',
+        };
+        if (attr.source === 'relation') {
+          payload.relationId = resource.relation_id;
+          payload.relInstanceId = instance._rel_instance_id;
+        }
+        await fetch('/api/update-instance-value', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        console.error('Update Fehler:', err);
+      }
+    };
+    select.addEventListener('change', save);
+    select.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!saved && cell.contains(select)) {
+          const newP = document.createElement('p');
+          newP.textContent = instance[attr.name] || '';
+          select.replaceWith(newP);
+        }
+      }, 150);
+    });
+    return;
+  }
+
+  const input = document.createElement('input');
+  const dtype = (attr.datatype || '').toUpperCase();
+  if (dtype === 'INTEGER') {
+    input.type = 'number';
+  } else if (dtype === 'DATE') {
+    input.type = 'date';
+  } else {
+    input.type = 'text';
+  }
+  // For date inputs, convert DD.MM.YYYY display to YYYY-MM-DD value
+  if (dtype === 'DATE' && p.textContent) {
+    const parts = p.textContent.split('.');
+    if (parts.length === 3) input.value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    else input.value = p.textContent;
+  } else {
+    input.value = p.textContent;
+  }
+  input.className = 'tree-cell-input';
+  p.replaceWith(input);
+  input.focus();
+  const save = async () => {
+    let newVal = input.value;
+    // Validate format
+    if (dtype === 'INTEGER' && newVal && isNaN(Number(newVal))) {
+      showMessageBox('Fehler: Bitte eine gültige Zahl eingeben!');
+      const newP = document.createElement('p');
+      newP.textContent = instance[attr.name] || '';
+      input.replaceWith(newP);
+      return;
+    }
+    // Format date for display
+    let displayVal = newVal;
+    if (dtype === 'DATE' && newVal) {
+      const d = new Date(newVal);
+      displayVal = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+    }
+    const newP = document.createElement('p');
+    newP.textContent = displayVal;
+    input.replaceWith(newP);
+    try {
+      const payload = {
+        instanceId: instance._id,
+        attributeName: attr.name,
+        value: newVal,
+        entityType: resource.entity_type,
+        source: attr.source || 'entity',
+      };
+      if (attr.source === 'relation') {
+        payload.relationId = resource.relation_id;
+        payload.relInstanceId = instance._rel_instance_id;
+      }
+      await fetch('/api/update-instance-value', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error('Update Fehler:', err);
+    }
+  };
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') input.blur();
+  });
+}
+
 function renderTreeView(resources, unlinkedEntities = []) {
   const grid = document.querySelector(".section-body-event .ressource-grid");
   grid.innerHTML = "";
 
-  // Update headline with dynamic column count
-  const headlineGrid = document.querySelector(".section-body-event .headline-grid");
-  // Reset headline levels (keep Ressourcen/Attribute labels)
-  const levelLabels = headlineGrid.querySelectorAll("p:not(.text-bold)");
-  // We'll keep the existing headline structure
+  // Calculate dynamic column count: 1 (resource name) + max attribute count
+  let maxAttrCount = 0;
+  resources.forEach(r => { if (r.attributes.length > maxAttrCount) maxAttrCount = r.attributes.length; });
+  const totalCols = Math.max(maxAttrCount + 1, 2);
+
+  // Update CSS custom property for grid columns
+  const sectionBody = document.getElementById('section-body-event');
+  sectionBody.style.setProperty('--tree-cols', totalCols);
+
+  // Update headline grid: rebuild Ebene labels dynamically
+  const headlineGrid = document.getElementById('headlineGrid');
+  // Remove old Ebene labels (keep the two text-bold headings)
+  headlineGrid.querySelectorAll('p:not(.text-bold)').forEach(p => p.remove());
+  for (let i = 0; i < totalCols; i++) {
+    const label = document.createElement('p');
+    label.textContent = i === 0 ? 'Bezeichnung' : `Ebene ${i}`;
+    headlineGrid.appendChild(label);
+  }
 
   let rowIndex = 1;
   resources.forEach((resource) => {
     const attrs = resource.attributes;
-    const maxCols = 7; // Grid has 7 columns
 
     // Resource name button (column 1)
     const nameBtn = document.createElement("div");
     nameBtn.className = "button-dark tree-resource-name";
     nameBtn.style.gridColumn = "1";
     nameBtn.style.gridRow = `${rowIndex}`;
-    nameBtn.innerHTML = `<p>${resource.entity_type}</p><img src="/static/assets/images/users.svg" alt="Users">`;
+    if (resource.hasPersons) {
+      nameBtn.innerHTML = `<p>${resource.entity_type}</p><img src="/static/assets/images/users.svg" alt="Users">`;
+    } else if (attrs.length > 0) {
+      nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
+      const plusBtn = document.createElement('img');
+      plusBtn.src = '/static/assets/images/plus.svg';
+      plusBtn.alt = 'Add';
+      plusBtn.className = 'tree-add-entry';
+      plusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        addListEntry(resource.entity_type, resource.attributes);
+      });
+      nameBtn.appendChild(plusBtn);
+    } else {
+      nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
+    }
     grid.appendChild(nameBtn);
 
     // Attribute headers (columns 2+)
     attrs.forEach((attr, idx) => {
-      if (idx + 2 > maxCols) return;
       const header = document.createElement("div");
       header.className = "button-light tree-attr-header";
       header.style.gridColumn = `${idx + 2}`;
       header.style.gridRow = `${rowIndex}`;
+      let attrIcon;
       if (attr.isInputField) {
-        header.innerHTML = `<p>${attr.name}</p><img src="/static/assets/images/tv_input.svg" alt="Input">`;
+        attrIcon = '/static/assets/images/tv_input.svg';
+      } else if (attr.isPersonRessource) {
+        attrIcon = '/static/assets/images/tv_api.svg';
       } else {
-        header.innerHTML = `<p>${attr.name}</p><img src="/static/assets/images/chevron.svg" alt="Chevron">`;
+        attrIcon = '/static/assets/images/tv_ressource.svg';
       }
+      header.innerHTML = `<p>${attr.name}</p><img src="${attrIcon}" alt="Type">`;
       grid.appendChild(header);
     });
     rowIndex++;
@@ -524,13 +732,124 @@ function renderTreeView(resources, unlinkedEntities = []) {
 
       // Values
       attrs.forEach((attr, idx) => {
-        if (idx + 2 > maxCols) return;
         const cell = document.createElement("div");
         cell.className = "tree-cell";
         cell.style.gridColumn = `${idx + 2}`;
         cell.style.gridRow = `${rowIndex}`;
         const val = instance[attr.name];
-        cell.innerHTML = `<p>${val !== null && val !== undefined ? val : '-'}</p>`;
+        const displayVal = val !== null && val !== undefined ? val : '';
+
+        if (attr.isSingularRessource && attr.ref_entity_type && attr.ref_attribute_name) {
+          // Dependent resource with reference → dropdown of source values
+          cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/chevron.svg" alt="Select" class="tree-cell-icon">`;
+          cell.classList.add('tree-cell-editable');
+          cell.querySelector('.tree-cell-icon').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (cell.querySelector('.tree-cell-dropdown')) {
+              cell.querySelector('.tree-cell-dropdown').remove();
+              return;
+            }
+            try {
+              const eventId = getCurrentEventId();
+              const res = await fetch(`/api/reference-values/${encodeURIComponent(attr.ref_entity_type)}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`);
+              const values = await res.json();
+              const dd = document.createElement('div');
+              dd.className = 'tree-cell-dropdown';
+              values.forEach(v => {
+                const item = document.createElement('div');
+                item.className = 'tree-cell-dropdown-item';
+                const dtype = (attr.datatype || '').toUpperCase();
+                let label = v;
+                if (dtype === 'DATE' && v && v.includes('-')) {
+                  const parts = v.split('-');
+                  if (parts.length === 3) label = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                }
+                item.textContent = label;
+                item.addEventListener('click', async () => {
+                  cell.querySelector('p').textContent = label;
+                  dd.remove();
+                  const ddPayload = {
+                    instanceId: instance._id,
+                    attributeName: attr.name,
+                    value: v,
+                    entityType: resource.entity_type,
+                    source: attr.source || 'entity',
+                  };
+                  if (attr.source === 'relation') {
+                    ddPayload.relationId = resource.relation_id;
+                    ddPayload.relInstanceId = instance._rel_instance_id;
+                  }
+                  await fetch('/api/update-instance-value', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ddPayload),
+                  });
+                });
+                dd.appendChild(item);
+              });
+              cell.style.position = 'relative';
+              cell.appendChild(dd);
+            } catch (err) {
+              console.error('Dropdown Fehler:', err);
+            }
+          });
+        } else if (attr.isSingularRessource) {
+          // Dependent resource → dropdown
+          cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/chevron.svg" alt="Select" class="tree-cell-icon">`;
+          cell.classList.add('tree-cell-editable');
+          cell.querySelector('.tree-cell-icon').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            // Check if dropdown already open
+            if (cell.querySelector('.tree-cell-dropdown')) {
+              cell.querySelector('.tree-cell-dropdown').remove();
+              return;
+            }
+            // Fetch entries from linked resource
+            try {
+              const res = await fetch(`/api/entity-instances/${encodeURIComponent(attr.name)}`);
+              const entries = await res.json();
+              const dd = document.createElement('div');
+              dd.className = 'tree-cell-dropdown';
+              entries.forEach(entry => {
+                const item = document.createElement('div');
+                item.className = 'tree-cell-dropdown-item';
+                item.textContent = entry.label || entry.name || String(entry.id);
+                item.addEventListener('click', async () => {
+                  cell.querySelector('p').textContent = item.textContent;
+                  dd.remove();
+                  const ddPayload = {
+                    instanceId: instance._id,
+                    attributeName: attr.name,
+                    value: item.textContent,
+                    entityType: resource.entity_type,
+                    source: attr.source || 'entity',
+                  };
+                  if (attr.source === 'relation') {
+                    ddPayload.relationId = resource.relation_id;
+                    ddPayload.relInstanceId = instance._rel_instance_id;
+                  }
+                  await fetch('/api/update-instance-value', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ddPayload),
+                  });
+                });
+                dd.appendChild(item);
+              });
+              cell.style.position = 'relative';
+              cell.appendChild(dd);
+            } catch (err) {
+              console.error('Dropdown Fehler:', err);
+            }
+          });
+        } else {
+          // Eingabe / API attribute → editable text
+          cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/tv_input.svg" alt="Edit" class="tree-cell-icon">`;
+          cell.querySelector('.tree-cell-icon').addEventListener('click', (e) => {
+            e.stopPropagation();
+            startInlineEdit(cell, instance, attr, resource);
+          });
+        }
         grid.appendChild(cell);
       });
       rowIndex++;
@@ -539,42 +858,6 @@ function renderTreeView(resources, unlinkedEntities = []) {
     // Spacer row between resources
     rowIndex++;
   });
-
-  // Show unlinked entities as suggestions
-  if (unlinkedEntities.length > 0) {
-    unlinkedEntities.forEach((entityType) => {
-      const suggestion = document.createElement("div");
-      suggestion.className = "button-light tree-resource-name tree-suggestion clickable";
-      suggestion.style.gridColumn = "1";
-      suggestion.style.gridRow = `${rowIndex}`;
-      suggestion.style.opacity = "0.6";
-      suggestion.style.cursor = "pointer";
-      suggestion.innerHTML = `<p>${entityType}</p><img src="/static/assets/images/plus.svg" alt="Link">`;
-      suggestion.addEventListener("click", async () => {
-        const eventId = getCurrentEventId();
-        if (!eventId) return;
-        try {
-          const response = await fetch("/api/resources/link", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entityType, eventInstanceId: eventId }),
-          });
-          if (response.ok) {
-            showMessageBox(`'${entityType}' mit Event verknüpft!`);
-            await refreshTreeView();
-            await refreshDropdowns();
-          } else {
-            showMessageBox("Fehler beim Verknüpfen!");
-          }
-        } catch (err) {
-          console.error("Link entity Fehler:", err);
-          showMessageBox("Fehler beim Verknüpfen!");
-        }
-      });
-      grid.appendChild(suggestion);
-      rowIndex++;
-    });
-  }
 }
 
 
@@ -587,23 +870,30 @@ async function refreshDropdowns() {
   if (!eventId) return;
 
   try {
-    const response = await fetch(`/api/entity-types?eventId=${eventId}`);
-    const types = await response.json();
+    const response = await fetch(`/api/entity-types?eventId=${eventId}&detailed=1`);
+    const typesDetailed = await response.json();
 
-    // Populate "Hinzufügen zu" dropdowns
-    const hinzufuegenIds = [
-      "apiHinzufuegenDropdown",
-      "resHinzufuegenDropdown",
-      "eingabeHinzufuegenDropdown",
-    ];
-    hinzufuegenIds.forEach((ddId) => {
+    // API "Hinzufügen zu" — only person resources
+    const apiDd = document.getElementById("apiHinzufuegenDropdown");
+    if (apiDd) {
+      apiDd.innerHTML = "";
+      typesDetailed.filter(t => t.hasPersons).forEach((t) => {
+        const item = document.createElement("div");
+        item.className = "dropdown-item clickable";
+        item.innerHTML = `<p>${t.name}</p>`;
+        apiDd.appendChild(item);
+      });
+    }
+
+    // Other "Hinzufügen zu" dropdowns — all resource types
+    ["resHinzufuegenDropdown", "eingabeHinzufuegenDropdown"].forEach((ddId) => {
       const dd = document.getElementById(ddId);
       if (!dd) return;
       dd.innerHTML = "";
-      types.forEach((type) => {
+      typesDetailed.forEach((t) => {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
-        item.innerHTML = `<p>${type}</p>`;
+        item.innerHTML = `<p>${t.name}</p>`;
         dd.appendChild(item);
       });
     });
@@ -612,10 +902,10 @@ async function refreshDropdowns() {
     const resDropdown = document.getElementById("resRessourceDropdown");
     if (resDropdown) {
       resDropdown.innerHTML = "";
-      types.forEach((type) => {
+      typesDetailed.forEach((t) => {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
-        item.innerHTML = `<p>${type}</p>`;
+        item.innerHTML = `<p>${t.name}</p>`;
         resDropdown.appendChild(item);
       });
     }
@@ -631,19 +921,17 @@ resRessourceDropdown.addEventListener("click", async (e) => {
   if (!item) return;
   const entityType = item.querySelector("p").textContent;
 
-  try {
-    const response = await fetch(`/api/entity-attributes/${encodeURIComponent(entityType)}`);
-    const attrs = await response.json();
+  const attrDropdown = document.getElementById("resAttributDropdown");
+  attrDropdown.innerHTML = "";
 
-    const attrDropdown = document.getElementById("resAttributDropdown");
-    attrDropdown.innerHTML = "";
-    attrs.forEach((attr) => {
+  // Use cached tree data to get attributes for the selected resource
+  const resource = cachedTreeData.find(r => r.entity_type === entityType);
+  if (resource) {
+    resource.attributes.forEach((attr) => {
       const attrItem = document.createElement("div");
       attrItem.className = "dropdown-item clickable";
-      attrItem.innerHTML = `<p>${attr.attribute_name}</p>`;
+      attrItem.innerHTML = `<p>${attr.name}</p>`;
       attrDropdown.appendChild(attrItem);
     });
-  } catch (err) {
-    console.error("Attribut-Dropdown Fehler:", err);
   }
 });
