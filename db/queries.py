@@ -108,6 +108,122 @@ def update_attribute(entity_type: str, old_attribute_name: str, new_attribute_na
     cur = conn.cursor()
     cur.execute("CALL update_attribute(?, ?, ?, ?)", (entity_type, old_attribute_name, new_attribute_name, new_datatype))
     conn.commit()
+
+
+def rename_entity_type(old_name: str, new_name: str):
+    """Rename an entity type."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE t_entity SET entity_type = ? WHERE entity_type = ?", (new_name, old_name))
+    # Also update relation names that reference this entity
+    cur.execute("UPDATE t_relation SET name = REPLACE(name, ?, ?) WHERE name LIKE ?",
+                (old_name.lower(), new_name.lower(), f"%{old_name.lower()}%"))
+    # Update ref_entity_type in dependent resource attributes
+    cur.execute("UPDATE t_attribute SET ref_entity_type = ? WHERE ref_entity_type = ?",
+                (new_name, old_name))
+    conn.commit()
+    conn.close()
+
+
+def delete_resource_from_event(entity_type: str, event_instance_id: int):
+    """Delete a resource (entity type) and its relation to the event."""
+    conn = get_connection()
+    try:
+        # Find the relation between event and this resource
+        rel_name = f"event_{entity_type.lower()}"
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
+        rel_row = cur.fetchone()
+        cur.close()
+
+        if rel_row:
+            # Delete relation attributes (fk_entity_id IS NULL)
+            cur2 = conn.cursor(dictionary=True)
+            cur2.execute(
+                """SELECT DISTINCT a.attribute_id FROM t_attribute a
+                   JOIN t_relation_participant rp ON rp.fk_att_id = a.attribute_id
+                   WHERE rp.fk_relation_id = ? AND a.fk_entity_id IS NULL
+                     AND rp.fk_att_id = rp.fk_att_id_rel""",
+                (rel_row['relation_id'],),
+            )
+            rel_attr_ids = [r['attribute_id'] for r in cur2.fetchall()]
+            cur2.close()
+
+            for aid in rel_attr_ids:
+                cur3 = conn.cursor()
+                cur3.execute("DELETE FROM t_attribute WHERE attribute_id = ?", (aid,))
+                cur3.close()
+
+            # Delete the relation itself
+            cur4 = conn.cursor()
+            cur4.execute("DELETE FROM t_relation WHERE relation_id = ?", (rel_row['relation_id'],))
+            cur4.close()
+
+        # Delete the entity type (cascades attributes, values, instances)
+        cur5 = conn.cursor()
+        cur5.execute("CALL delete_entity_type(?)", (entity_type,))
+        _drain(cur5)
+        cur5.close()
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def delete_relation_attribute(relation_id: int, attribute_name: str):
+    """Delete a relation attribute by name."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """SELECT a.attribute_id FROM t_attribute a
+               JOIN t_relation_participant rp ON rp.fk_att_id = a.attribute_id
+               WHERE rp.fk_relation_id = ? AND a.attribute_name = ?
+                 AND a.fk_entity_id IS NULL AND rp.fk_att_id = rp.fk_att_id_rel""",
+            (relation_id, attribute_name),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            cur2 = conn.cursor()
+            cur2.execute("DELETE FROM t_attribute WHERE attribute_id = ?", (row['attribute_id'],))
+            cur2.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def update_relation_attribute_name(relation_id: int, old_name: str, new_name: str):
+    """Rename a relation attribute."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """SELECT a.attribute_id FROM t_attribute a
+               JOIN t_relation_participant rp ON rp.fk_att_id = a.attribute_id
+               WHERE rp.fk_relation_id = ? AND a.attribute_name = ?
+                 AND a.fk_entity_id IS NULL AND rp.fk_att_id = rp.fk_att_id_rel""",
+            (relation_id, old_name),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE t_attribute SET attribute_name = ? WHERE attribute_id = ?",
+                         (new_name, row['attribute_id']))
+            cur2.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
     affected = cur.rowcount
     conn.close()
     return affected
@@ -136,6 +252,16 @@ def delete_entity_instance(instance_id: int):
     affected = cur.rowcount
     conn.close()
     return affected
+
+
+def delete_list_entry(instance_id: int, rel_instance_id: int = None):
+    conn = get_connection()
+    cur = conn.cursor()
+    if rel_instance_id:
+        cur.execute("CALL delete_relation_instance(?)", (rel_instance_id,))
+    cur.execute("CALL delete_entity_instance(?)", (instance_id,))
+    conn.commit()
+    conn.close()
 
 
 # =========================================================================

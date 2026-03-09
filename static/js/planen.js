@@ -47,6 +47,7 @@ expandTreeViewBtn.addEventListener("click", (e) => {
 
     iconExpandTreeView.src = "/static/assets/images/arrow-expand.svg";
     sectionBodyEvent.classList.remove('expanded');
+    exitEditMode();
   }
   else{
     sectionEvent.style.position = "fixed";
@@ -727,11 +728,17 @@ function renderTreeView(resources, unlinkedEntities = []) {
     } else {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
     }
+    nameBtn.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tree-add-entry')) return;
+      e.stopPropagation();
+      enterResourceEditMode(resource);
+    });
     headerRow.appendChild(nameBtn);
 
     attrs.forEach((attr) => {
       const header = document.createElement("div");
       header.className = "button-light tree-attr-header";
+      header.style.cursor = 'pointer';
       let attrIcon;
       if (attr.isInputField) {
         attrIcon = '/static/assets/images/tv_input.svg';
@@ -741,6 +748,10 @@ function renderTreeView(resources, unlinkedEntities = []) {
         attrIcon = '/static/assets/images/tv_ressource.svg';
       }
       header.innerHTML = `<p>${attr.name}</p><img src="${attrIcon}" alt="Type">`;
+      header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        enterAttributeEditMode(attr, resource);
+      });
       headerRow.appendChild(header);
     });
     block.appendChild(headerRow);
@@ -754,8 +765,30 @@ function renderTreeView(resources, unlinkedEntities = []) {
       entryRow.className = "tree-entry-row";
       entryRow.style.gridTemplateColumns = `repeat(${totalCols}, 246px)`;
 
-      // Empty spacer for resource column
+      // Delete icon in resource column, aligned right
       const spacer = document.createElement("div");
+      spacer.className = "tree-entry-spacer";
+      const deleteIcon = document.createElement("img");
+      deleteIcon.src = "/static/assets/images/tv_x_entries.svg";
+      deleteIcon.alt = "Delete";
+      deleteIcon.className = "tree-entry-delete";
+      deleteIcon.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+          await fetch("/api/list-entry", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              instanceId: instance._id,
+              relInstanceId: instance._rel_instance_id || null,
+            }),
+          });
+          refreshTreeView();
+        } catch (err) {
+          console.error("Delete entry error:", err);
+        }
+      });
+      spacer.appendChild(deleteIcon);
       entryRow.appendChild(spacer);
 
       // Values
@@ -873,6 +906,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
         }
         entryRow.appendChild(cell);
       });
+
       entriesContainer.appendChild(entryRow);
     });
 
@@ -954,5 +988,309 @@ resRessourceDropdown.addEventListener("click", async (e) => {
       attrItem.innerHTML = `<p>${attr.name}</p>`;
       attrDropdown.appendChild(attrItem);
     });
+  }
+});
+
+
+// =========================================================================
+// Edit/Delete Mode for Resources & Attributes
+// =========================================================================
+
+let editingResource = null;   // { entity_type, relation_id, hasPersons }
+let editingAttribute = null;  // { name, source, entity_type, relation_id, datatype, ... }
+
+function enterResourceEditMode(resource) {
+  editingResource = resource;
+  editingAttribute = null;
+
+  // Show resource section, hide attribute section
+  const resSection = document.querySelector('.event-extended-ressource');
+  const attrSection = document.querySelector('.event-extended-attribute');
+  resSection.style.display = '';
+  attrSection.style.display = 'none';
+
+  // Fill resource form
+  document.getElementById('ressourceName').value = resource.entity_type;
+
+  // Hide person dropdown for non-person resources (lists)
+  const personenDropdown = document.getElementById('personenDropdownBtn');
+  const selectedGroupsDiv = document.getElementById('selectedGroups');
+  if (resource.hasPersons) {
+    personenDropdown.style.display = '';
+    selectedGroupsDiv.style.display = '';
+  } else {
+    personenDropdown.style.display = 'none';
+    selectedGroupsDiv.style.display = 'none';
+  }
+
+  // Show edit buttons, hide create button
+  document.getElementById('ressourceCreateButtons').style.display = 'none';
+  document.getElementById('ressourceEditButtons').style.display = 'flex';
+
+  // Show cancel button
+  document.getElementById('btnCancelRessource').style.display = '';
+}
+
+function enterAttributeEditMode(attr, resource) {
+  editingAttribute = { ...attr, entity_type: resource.entity_type, relation_id: resource.relation_id };
+  editingResource = null;
+
+  // Show attribute section, hide resource section
+  const resSection = document.querySelector('.event-extended-ressource');
+  const attrSection = document.querySelector('.event-extended-attribute');
+  resSection.style.display = 'none';
+  attrSection.style.display = '';
+
+  // Reset attribute type dropdowns
+  const attributFieldsApi = document.getElementById('attributFieldsApi');
+  const attributFieldsRessource = document.getElementById('attributFieldsRessource');
+  const attributFieldsEingabe = document.getElementById('attributFieldsEingabe');
+  attributFieldsApi.style.display = 'none';
+  attributFieldsRessource.style.display = 'none';
+  attributFieldsEingabe.style.display = 'none';
+
+  // Disable attribute type dropdown in edit mode
+  document.getElementById('attributDropdownBtn').style.pointerEvents = 'none';
+  document.getElementById('attributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = 'none';
+
+  // Set the attribute type dropdown label
+  if (attr.isPersonRessource) {
+    document.getElementById('attributSelectedText').textContent = 'API-Endpunkt';
+    attributFieldsApi.style.display = 'flex';
+    document.getElementById('apiEmailSelectedText').textContent = attr.name;
+    document.getElementById('apiHinzufuegenDropdownBtn').style.display = 'none';
+  } else if (attr.isSingularRessource) {
+    document.getElementById('attributSelectedText').textContent = 'Abhängige Ressource';
+    attributFieldsRessource.style.display = 'flex';
+    document.getElementById('resRessourceSelectedText').textContent = attr.ref_entity_type || attr.name;
+    document.getElementById('resAttributSelectedText').textContent = attr.ref_attribute_name || attr.name;
+    document.getElementById('resHinzufuegenSelectedText').textContent = resource.entity_type;
+    document.getElementById('resHinzufuegenDropdownBtn').style.display = 'none';
+    // Abhängige Ressource: only delete allowed, hide update button
+    document.getElementById('btnUpdateAttribut').style.display = 'none';
+    // Disable dropdowns - display only
+    document.getElementById('resRessourceDropdownBtn').style.pointerEvents = 'none';
+    document.getElementById('resRessourceDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = 'none';
+    document.getElementById('resAttributDropdownBtn').style.pointerEvents = 'none';
+    document.getElementById('resAttributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = 'none';
+  } else {
+    document.getElementById('attributSelectedText').textContent = 'Eingabe';
+    attributFieldsEingabe.style.display = 'flex';
+    document.getElementById('eingabeAttributName').value = attr.name;
+    // Map datatype to display
+    const dtMap = { 'VARCHAR': 'Text', 'INTEGER': 'Zahl', 'DATE': 'Datum' };
+    document.getElementById('eingabeFormatSelectedText').textContent = dtMap[attr.datatype] || attr.datatype;
+    document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = 'none';
+  }
+
+  // Show edit buttons, hide create button
+  document.getElementById('attributCreateButtons').style.display = 'none';
+  document.getElementById('attributEditButtons').style.display = 'flex';
+
+  // Show cancel button
+  document.getElementById('btnCancelAttribut').style.display = '';
+}
+
+function exitEditMode() {
+  editingResource = null;
+  editingAttribute = null;
+
+  // Reset resource form
+  document.getElementById('ressourceName').value = '';
+  selectedGroups.clear();
+  renderTags();
+
+  // Reset attribute form
+  document.getElementById('eingabeAttributName').value = '';
+  document.getElementById('attributSelectedText').textContent = 'Attributtyp wählen';
+  document.getElementById('attributFieldsApi').style.display = 'none';
+  document.getElementById('attributFieldsRessource').style.display = 'none';
+  document.getElementById('attributFieldsEingabe').style.display = 'none';
+
+  // Restore hidden "Hinzufügen zu" dropdowns
+  document.getElementById('apiHinzufuegenDropdownBtn').style.display = '';
+  document.getElementById('resHinzufuegenDropdownBtn').style.display = '';
+  document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = '';
+
+  // Restore person dropdown visibility
+  document.getElementById('personenDropdownBtn').style.display = '';
+  document.getElementById('selectedGroups').style.display = '';
+
+  // Restore update attribute button (hidden for abhängige Ressource)
+  document.getElementById('btnUpdateAttribut').style.display = '';
+
+  // Restore attribute type dropdown
+  document.getElementById('attributDropdownBtn').style.pointerEvents = '';
+  document.getElementById('attributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = '';
+
+  // Restore abhängige Ressource dropdowns
+  document.getElementById('resRessourceDropdownBtn').style.pointerEvents = '';
+  document.getElementById('resRessourceDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = '';
+  document.getElementById('resAttributDropdownBtn').style.pointerEvents = '';
+  document.getElementById('resAttributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = '';
+
+  // Hide cancel buttons
+  document.getElementById('btnCancelRessource').style.display = 'none';
+  document.getElementById('btnCancelAttribut').style.display = 'none';
+
+  // Show create buttons, hide edit buttons
+  document.getElementById('ressourceCreateButtons').style.display = 'flex';
+  document.getElementById('ressourceEditButtons').style.display = 'none';
+  document.getElementById('attributCreateButtons').style.display = 'flex';
+  document.getElementById('attributEditButtons').style.display = 'none';
+
+  // Show both sections
+  document.querySelector('.event-extended-ressource').style.display = '';
+  document.querySelector('.event-extended-attribute').style.display = '';
+}
+
+// --- Cancel Buttons ---
+document.getElementById('btnCancelRessource').addEventListener('click', (e) => {
+  e.stopPropagation();
+  exitEditMode();
+});
+document.getElementById('btnCancelAttribut').addEventListener('click', (e) => {
+  e.stopPropagation();
+  exitEditMode();
+});
+
+// --- Update Resource ---
+document.getElementById('btnUpdateRessource').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!editingResource) return;
+
+  const newName = document.getElementById('ressourceName').value.trim();
+  if (!newName) {
+    showMessageBox('Fehler: Ressourcenname darf nicht leer sein!');
+    return;
+  }
+
+  try {
+    if (newName !== editingResource.entity_type) {
+      const response = await fetch('/api/resources/rename', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldName: editingResource.entity_type, newName }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        showMessageBox('Fehler: ' + (err?.error || 'Umbenennung fehlgeschlagen'));
+        return;
+      }
+    }
+    showMessageBox(`Ressource '${newName}' aktualisiert!`);
+    exitEditMode();
+    await refreshTreeView();
+    await refreshDropdowns();
+  } catch (err) {
+    console.error('Update resource error:', err);
+    showMessageBox('Fehler beim Aktualisieren der Ressource!');
+  }
+});
+
+// --- Delete Resource ---
+document.getElementById('btnDeleteRessource').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!editingResource) return;
+
+  const eventId = getCurrentEventId();
+  if (!eventId) {
+    showMessageBox('Fehler: Kein Event ausgewählt!');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/resources/delete', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: editingResource.entity_type, eventInstanceId: eventId }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      showMessageBox('Fehler: ' + (err?.error || 'Löschen fehlgeschlagen'));
+      return;
+    }
+    showMessageBox(`Ressource '${editingResource.entity_type}' gelöscht!`);
+    exitEditMode();
+    await refreshTreeView();
+    await refreshDropdowns();
+  } catch (err) {
+    console.error('Delete resource error:', err);
+    showMessageBox('Fehler beim Löschen der Ressource!');
+  }
+});
+
+// --- Update Attribute ---
+document.getElementById('btnUpdateAttribut').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!editingAttribute) return;
+
+  let newName = editingAttribute.name;
+  // For input attributes, get new name from the input field
+  if (editingAttribute.isInputField || (!editingAttribute.isPersonRessource && !editingAttribute.isSingularRessource)) {
+    newName = document.getElementById('eingabeAttributName').value.trim();
+    if (!newName) {
+      showMessageBox('Fehler: Attributname darf nicht leer sein!');
+      return;
+    }
+  }
+
+  try {
+    if (newName !== editingAttribute.name) {
+      const response = await fetch('/api/attributes/rename', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: editingAttribute.entity_type,
+          oldName: editingAttribute.name,
+          newName,
+          source: editingAttribute.source || 'entity',
+          relationId: editingAttribute.relation_id,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        showMessageBox('Fehler: ' + (err?.error || 'Umbenennung fehlgeschlagen'));
+        return;
+      }
+    }
+    showMessageBox(`Attribut '${newName}' aktualisiert!`);
+    exitEditMode();
+    await refreshTreeView();
+    await refreshDropdowns();
+  } catch (err) {
+    console.error('Update attribute error:', err);
+    showMessageBox('Fehler beim Aktualisieren des Attributs!');
+  }
+});
+
+// --- Delete Attribute ---
+document.getElementById('btnDeleteAttribut').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!editingAttribute) return;
+
+  try {
+    const response = await fetch('/api/attributes/delete', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityType: editingAttribute.entity_type,
+        attributeName: editingAttribute.name,
+        source: editingAttribute.source || 'entity',
+        relationId: editingAttribute.relation_id,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      showMessageBox('Fehler: ' + (err?.error || 'Löschen fehlgeschlagen'));
+      return;
+    }
+    showMessageBox(`Attribut '${editingAttribute.name}' gelöscht!`);
+    exitEditMode();
+    await refreshTreeView();
+    await refreshDropdowns();
+  } catch (err) {
+    console.error('Delete attribute error:', err);
+    showMessageBox('Fehler beim Löschen des Attributs!');
   }
 });

@@ -7,7 +7,12 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      add_list_entry as svc_add_list_entry,
                                      update_instance_value as svc_update_instance_value,
                                      get_entity_instances as svc_get_entity_instances,
-                                     get_reference_values as svc_get_reference_values)
+                                     get_reference_values as svc_get_reference_values,
+                                     rename_resource as svc_rename_resource,
+                                     delete_resource as svc_delete_resource,
+                                     rename_attribute as svc_rename_attribute,
+                                     delete_attribute_from_resource as svc_delete_attribute,
+                                     delete_list_entry as svc_delete_list_entry)
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -224,6 +229,81 @@ def api_get_reference_values(entity_type, attribute_name):
     event_id = request.args.get('eventId', type=int)
     values = svc_get_reference_values(entity_type, attribute_name, event_id)
     return jsonify(values), 200
+
+
+@app.route('/api/resources/rename', methods=['PUT'])
+def api_rename_resource():
+    data = request.get_json()
+    old_name = data.get('oldName')
+    new_name = data.get('newName')
+    if not old_name or not new_name:
+        return jsonify({"error": "Missing oldName or newName"}), 400
+    try:
+        result = svc_rename_resource(old_name, new_name)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/resources/delete', methods=['DELETE'])
+def api_delete_resource():
+    data = request.get_json()
+    entity_type = data.get('entityType')
+    event_id = data.get('eventInstanceId')
+    if not entity_type or not event_id:
+        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
+    try:
+        result = svc_delete_resource(entity_type, event_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/attributes/rename', methods=['PUT'])
+def api_rename_attribute():
+    data = request.get_json()
+    entity_type = data.get('entityType')
+    old_name = data.get('oldName')
+    new_name = data.get('newName')
+    source = data.get('source', 'entity')
+    relation_id = data.get('relationId')
+    if not old_name or not new_name:
+        return jsonify({"error": "Missing oldName or newName"}), 400
+    try:
+        result = svc_rename_attribute(entity_type, old_name, new_name, source, relation_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/attributes/delete', methods=['DELETE'])
+def api_delete_attribute():
+    data = request.get_json()
+    entity_type = data.get('entityType')
+    attr_name = data.get('attributeName')
+    source = data.get('source', 'entity')
+    relation_id = data.get('relationId')
+    if not attr_name:
+        return jsonify({"error": "Missing attributeName"}), 400
+    try:
+        result = svc_delete_attribute(entity_type, attr_name, source, relation_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/list-entry', methods=['DELETE'])
+def api_delete_list_entry():
+    data = request.get_json()
+    instance_id = data.get('instanceId')
+    rel_instance_id = data.get('relInstanceId')
+    if not instance_id:
+        return jsonify({"error": "Missing instanceId"}), 400
+    try:
+        result = svc_delete_list_entry(instance_id, rel_instance_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 if __name__ == '__main__':

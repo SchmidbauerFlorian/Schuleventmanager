@@ -346,7 +346,10 @@
             </div>
             <div id="section-body-event-extended" class="section-body-event-extended">
                 <div class="event-extended-ressource">
-                    <p>Ressource</p>
+                    <div class="event-extended-heading">
+                        <p>Ressource</p>
+                        <p class="cancel-link clickable" id="btnCancelRessource" style="display:none;">Abbrechen</p>
+                    </div>
                     <div class="ressource-form">
                         <label for="ressourceName" class="button-light ressource-input-wrapper">
                             <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
@@ -370,14 +373,29 @@
                             </div>
                         </div>
                         <div id="selectedGroups" class="selected-groups"></div>
-                        <div class="button-dark clickable" id="btnCreateRessource">
-                            <p>Ressource erstellen</p>
-                            <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                        <div id="ressourceCreateButtons" class="ressource-action-row">
+                            <div class="button-dark clickable" id="btnCreateRessource">
+                                <p>Ressource erstellen</p>
+                                <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                            </div>
+                        </div>
+                        <div id="ressourceEditButtons" class="ressource-action-row" style="display:none;">
+                            <div class="button-dark clickable" id="btnUpdateRessource">
+                                <p>Ressource bearbeiten</p>
+                                <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Edit Icon">
+                            </div>
+                            <div class="button-red clickable" id="btnDeleteRessource">
+                                <p>Ressource löschen</p>
+                                <img src="{{ url_for('static', filename='assets/images/trash.svg') }}" alt="Delete Icon">
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="event-extended-attribute">
-                    <p>Attribut</p>
+                    <div class="event-extended-heading">
+                        <p>Attribut</p>
+                        <p class="cancel-link clickable" id="btnCancelAttribut" style="display:none;">Abbrechen</p>
+                    </div>
                     <div class="ressource-form">
                         <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="attributDropdownBtn">
                             <img src="{{ url_for('static', filename='assets/images/tv_attribute.svg') }}" alt="Attribute Icon">
@@ -504,9 +522,21 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="button-dark clickable" id="btnCreateAttribut">
-                            <p>Attribut erstellen</p>
-                            <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                        <div id="attributCreateButtons" class="ressource-action-row">
+                            <div class="button-dark clickable" id="btnCreateAttribut">
+                                <p>Attribut erstellen</p>
+                                <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Plus Icon">
+                            </div>
+                        </div>
+                        <div id="attributEditButtons" class="ressource-action-row" style="display:none;">
+                            <div class="button-dark clickable" id="btnUpdateAttribut">
+                                <p>Attribut bearbeiten</p>
+                                <img src="{{ url_for('static', filename='assets/images/plus.svg') }}" alt="Edit Icon">
+                            </div>
+                            <div class="button-red clickable" id="btnDeleteAttribut">
+                                <p>Attribut löschen</p>
+                                <img src="{{ url_for('static', filename='assets/images/trash.svg') }}" alt="Delete Icon">
+                            </div>
                         </div>
                     </div>
                 </div>

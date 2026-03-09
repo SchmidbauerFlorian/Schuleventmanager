@@ -195,3 +195,43 @@ def get_entity_instances(entity_type: str) -> list:
 
 def get_reference_values(entity_type: str, attribute_name: str, event_instance_id: int) -> list:
     return queries.get_reference_values(entity_type, attribute_name, event_instance_id)
+
+
+def rename_resource(old_name: str, new_name: str) -> dict:
+    queries.rename_entity_type(old_name, new_name)
+    return {"status": "ok"}
+
+
+def delete_resource(entity_type: str, event_instance_id: int) -> dict:
+    queries.delete_resource_from_event(entity_type, event_instance_id)
+    return {"status": "ok"}
+
+
+def rename_attribute(entity_type: str, old_name: str, new_name: str,
+                     source: str = 'entity', relation_id: int = None) -> dict:
+    if source == 'relation' and relation_id:
+        queries.update_relation_attribute_name(relation_id, old_name, new_name)
+    else:
+        # For entity attributes, keep the same datatype
+        attrs = queries.get_entity_type_attributes_list(entity_type)
+        datatype = 'VARCHAR'
+        for a in attrs:
+            if a['attribute_name'] == old_name:
+                datatype = a['datatype']
+                break
+        queries.update_attribute(entity_type, old_name, new_name, datatype)
+    return {"status": "ok"}
+
+
+def delete_attribute_from_resource(entity_type: str, attr_name: str,
+                                   source: str = 'entity', relation_id: int = None) -> dict:
+    if source == 'relation' and relation_id:
+        queries.delete_relation_attribute(relation_id, attr_name)
+    else:
+        queries.delete_attribute(entity_type, attr_name)
+    return {"status": "ok"}
+
+
+def delete_list_entry(instance_id: int, rel_instance_id: int = None) -> dict:
+    queries.delete_list_entry(instance_id, rel_instance_id)
+    return {"status": "ok"}

@@ -324,6 +324,8 @@ footer{
 }
 .section-kommunikation{
     width: 550px;
+
+    filter: brightness(10); /* hide children elements (not implemented) */
 }
 .section-body-kommunikation{
     display: flex;
@@ -609,6 +611,19 @@ footer{
 .event-extended-attribute{
     border-left: 2px dashed var(--color-secondary);
 }
+.event-extended-heading{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: calc(var(--space) * 40);
+}
+.cancel-link{
+    font-size: 0.9rem;
+    opacity: 0.5;
+}
+.cancel-link:hover{
+    opacity: 1;
+}
 .ressource-form{
     display: flex;
     flex-direction: column;
@@ -698,6 +713,15 @@ label.ressource-input-wrapper{
     flex-wrap: wrap;
     gap: calc(var(--space) / 2);
     width: calc(var(--space) * 40);
+}
+.ressource-action-row{
+    display: flex;
+    gap: calc(var(--space) / 2);
+    width: calc(var(--space) * 40);
+}
+.ressource-action-row .button-dark,
+.ressource-action-row .button-red{
+    flex: 1;
 }
 .group-tag{
     display: flex;
@@ -811,6 +835,22 @@ label.ressource-input-wrapper{
 }
 .tree-add-entry:hover{
     opacity: 1 !important;
+}
+.tree-entry-spacer{
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: var(--space);
+    height: calc(var(--space) * 2);
+}
+.tree-entry-delete{
+    width: 12px;
+    height: 12px;
+    opacity: 0.5;
+    cursor: pointer;
+}
+.tree-entry-delete:hover{
+    opacity: 1;
 }
 .tree-attr-header{
     display: flex;
