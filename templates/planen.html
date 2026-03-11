@@ -93,36 +93,7 @@
                 </div>
             </div>
         </section>
-        <section class="section-kommunikation">
-            <div class="section-head">
-                <div>
-                    <img src="{{ url_for('static', filename='assets/images/inbox.svg') }}" alt="Inbox Icon">
-                    <h3>Kommunikation</h3>
-                </div>
-                <div>
-                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
-                </div>
-            </div>
-            <div class="section-body-kommunikation">
-                <div id="message-history">
-                    <h2>Verlauf</h2>
-                    <div class="verlauf-item">
-                        <p class="text-bold">N/A</p>
-                        <p>N/A</p>
-                    </div>
-                </div>
-                <div class="button-container">
-                    <div class="button-dark clickable">
-                        <p>Popup anzeigen</p>
-                        <img src="{{ url_for('static', filename='assets/images/popup.svg') }}" alt="Popup Icon">
-                    </div>
-                    <div class="button-dark clickable">
-                        <p>Email versenden</p>
-                        <img src="{{ url_for('static', filename='assets/images/mail.svg') }}" alt="Mail Icon">
-                    </div>
-                </div>
-            </div>
-        </section>
+
     </article>
     <article>
         <section class="section-ressourcen">
@@ -359,20 +330,26 @@
                             <img src="{{ url_for('static', filename='assets/images/tv_add_people.svg') }}" alt="People Icon">
                             <input type="text" id="personenSearch" placeholder="Personen hinzufügen">
                             <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
-                            <div id="personenDropdown" class="dropdown-container">
-                                <div class="dropdown-item clickable" data-group="1AHIT"><p>1AHIT</p></div>
-                                <div class="dropdown-item clickable" data-group="2AHIT"><p>2AHIT</p></div>
-                                <div class="dropdown-item clickable" data-group="3AHIT"><p>3AHIT</p></div>
-                                <div class="dropdown-item clickable" data-group="4AHIT"><p>4AHIT</p></div>
-                                <div class="dropdown-item clickable" data-group="5AHIT"><p>5AHIT</p></div>
-                                <div class="dropdown-item clickable" data-group="1AHET"><p>1AHET</p></div>
-                                <div class="dropdown-item clickable" data-group="2AHET"><p>2AHET</p></div>
-                                <div class="dropdown-item clickable" data-group="3AHET"><p>3AHET</p></div>
-                                <div class="dropdown-item clickable" data-group="4AHET"><p>4AHET</p></div>
-                                <div class="dropdown-item clickable" data-group="5AHET"><p>5AHET</p></div>
-                            </div>
+                            <div id="personenDropdown" class="dropdown-container"></div>
                         </div>
                         <div id="selectedGroups" class="selected-groups"></div>
+                        <div id="ressourceCardinalitySection" class="ressource-cardinality-section" style="display:none;">
+                            <p class="ressource-cardinality-label">Kardinalität</p>
+                            <div class="ressource-cardinality-inputs">
+                                <label class="button-light ressource-input-wrapper ressource-card-input">
+                                    <p>Min</p>
+                                    <input type="number" min="0" id="ressourceCardMin" value="0">
+                                </label>
+                                <span class="ressource-card-sep">..</span>
+                                <label class="button-light ressource-input-wrapper ressource-card-input">
+                                    <p>Max</p>
+                                    <input type="number" min="0" id="ressourceCardMax" placeholder="∞">
+                                </label>
+                                <div class="button-dark clickable" id="btnSaveCardinality">
+                                    <p>Speichern</p>
+                                </div>
+                            </div>
+                        </div>
                         <div id="ressourceCreateButtons" class="ressource-action-row">
                             <div class="button-dark clickable" id="btnCreateRessource">
                                 <p>Ressource erstellen</p>

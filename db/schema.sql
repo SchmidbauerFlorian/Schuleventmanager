@@ -407,9 +407,14 @@ BEGIN
 
     -- Create attribute (entity attributes are always isListRessource=TRUE)
     -- Inherit isPersonRessource from existing attributes of same entity
-    INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isListRessource, isPersonRessource)
-    VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE,
-            IFNULL((SELECT MAX(isPersonRessource) FROM t_attribute WHERE fk_entity_id = v_entity_id), FALSE));
+    BEGIN
+        DECLARE v_is_person BOOLEAN DEFAULT FALSE;
+        SELECT IFNULL(MAX(isPersonRessource), FALSE) INTO v_is_person
+        FROM t_attribute WHERE fk_entity_id = v_entity_id;
+
+        INSERT INTO t_attribute(fk_entity_id, fk_datatype_id, attribute_name, isRequired, isListRessource, isPersonRessource)
+        VALUES (v_entity_id, v_datatype_id, p_attribute_name, IFNULL(p_isRequired, FALSE), TRUE, v_is_person);
+    END;
     SET v_attr_id = LAST_INSERT_ID();
 
     -- Backfill existing instances with NULL value
@@ -1199,11 +1204,12 @@ CREATE SEQUENCE seq_entity_instance_id;
 CREATE SEQUENCE seq_relation_instance_id;
 SET FOREIGN_KEY_CHECKS = 1;
 
+
 SELECT '--- 1. INSERT USERS (MS Graph) ---' AS Step;
 INSERT INTO t_users (display_name, email, job_title) VALUES
-    ('Max Mustermann',  'mm@htlwy.com',    'Student'),
-    ('Anna Musterfrau', 'am@htlwy.com',    'Student'),
-    ('Mr. Smith',       'smith@htlwy.com', 'Teacher');
+    ('Max Mustermann',  'mm@htlwy.com',    '5AHIT'),
+    ('Anna Musterfrau', 'am@htlwy.com',    '2AHIT'),
+    ('Mr. Smith',       'smith@htlwy.com', '');
 
 -- ---------------------------------------------------------------------------
 -- 2. PREFERENCES
@@ -1223,6 +1229,8 @@ INSERT INTO t_user_preferences (user_id, preference_id) VALUES
     (2, 2),  -- Anna  -> light/de
     (3, 3);  -- Smith -> light/en
 
+
+/*
 -- ---------------------------------------------------------------------------
 -- 4. ENTITY TYPES
 -- ---------------------------------------------------------------------------
@@ -1248,11 +1256,11 @@ CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max M
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2');  -- 2
 CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3');       -- 3
 -- Events
-/*
+
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1');               -- 4
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2');        -- 5
 CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3');  -- 6
-*/
+
 -- Teachers
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1');                  -- 7
 CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2');                  -- 8
@@ -1263,7 +1271,7 @@ CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2
 -- ---------------------------------------------------------------------------
 -- 6. RELATION DEFINITIONS
 -- ---------------------------------------------------------------------------
-/*
+
 SELECT '--- 6. DEFINE RELATIONS ---' AS Step;
 -- add_relation_attribute(relation_id, name, datatype, isInputField, isRequired, isSingularRessource, expirationDate)
 
@@ -1353,7 +1361,7 @@ SELECT '--- FILL_DB COMPLETED ---' AS Message;
 -- TEST: create_entity_instances_from_users
 -- Requires Entity-Types 'Student' and 'Teacher' to already exist (see Part 3 above)
 -- ============================================================================
-*/
+
 -- Insert test users into t_users
 INSERT INTO t_users (display_name, email, job_title) VALUES
     ('Elena Fischer',   'ef@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
@@ -1383,3 +1391,4 @@ INSERT INTO t_users (display_name, email, job_title) VALUES
 
 -- Test: create_attribute with isRequired=TRUE (isListRessource is always TRUE for entity attributes)
 -- CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
+*/

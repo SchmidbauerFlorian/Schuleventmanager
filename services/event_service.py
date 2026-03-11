@@ -125,23 +125,24 @@ def get_events(user_id) -> dict:
 # Resource & Attribute Management
 # =========================================================================
 
-def create_resource(resource_name: str, groups: list, event_instance_id: int) -> dict:
-    rel_id = queries.create_resource_for_event(resource_name, groups, event_instance_id)
+def create_resource(resource_name: str, user_ids: list, class_groups: list, event_instance_id: int) -> dict:
+    rel_id = queries.create_resource_for_event(resource_name, user_ids, class_groups, event_instance_id)
     return {"status": "ok", "relation_id": rel_id}
 
 
 def create_event_attribute(attr_type: str, data: dict, event_instance_id: int) -> dict:
     if attr_type == "api":
-        queries.add_api_attribute_to_resource(data.get('entityType'), data.get('field'))
+        queries.add_api_attribute_to_resource(
+            data.get('entityId'), data.get('field'), event_instance_id)
         return {"status": "ok"}
     elif attr_type == "ressource":
         rel_id = queries.add_dependent_resource_attribute(
-            data.get('targetEntity'), event_instance_id,
-            data.get('sourceEntity'), data.get('sourceAttribute'))
+            data.get('targetEntityId'), event_instance_id,
+            data.get('sourceEntityId'), data.get('sourceAttribute'))
         return {"status": "ok", "relation_id": rel_id}
     elif attr_type == "eingabe":
         rel_id = queries.add_input_attribute_to_event_relation(
-            data.get('entityType'), event_instance_id,
+            data.get('entityId'), event_instance_id,
             data.get('attributeName'), data.get('datatype', 'Text'),
             data.get('isRequired', False), data.get('expirationDate'))
         return {"status": "ok", "relation_id": rel_id}
@@ -160,12 +161,12 @@ def get_entity_types_detailed(event_instance_id) -> list:
     return queries.get_event_entity_types_detailed(event_instance_id)
 
 
-def get_entity_attrs(entity_type: str) -> list:
-    return queries.get_entity_type_attributes_list(entity_type)
+def get_entity_attrs(entity_id: int) -> list:
+    return queries.get_entity_type_attributes_list(entity_id)
 
 
-def link_entity_to_event(entity_type: str, event_instance_id: int) -> dict:
-    rel_id = queries.link_existing_entity_to_event(entity_type, event_instance_id)
+def link_entity_to_event(entity_id: int, event_instance_id: int) -> dict:
+    rel_id = queries.link_existing_entity_to_event(entity_id, event_instance_id)
     return {"status": "ok", "relation_id": rel_id}
 
 
@@ -173,8 +174,16 @@ def get_unlinked_entities(event_instance_id: int) -> list:
     return queries.get_unlinked_entity_types(event_instance_id)
 
 
-def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> dict:
-    instance_id = queries.add_list_entry(entity_type, event_instance_id, values)
+def add_list_entry(entity_id: int, event_instance_id: int, values: dict) -> dict:
+    # Enforce cardinality max
+    card_max = queries.get_cardinality_for_entity_in_event(entity_id, event_instance_id)
+    if card_max is not None:
+        current_count = queries.get_relation_instance_count(entity_id, event_instance_id)
+        if current_count >= card_max:
+            raise ValueError(
+                f"Kardinalität überschritten: Maximal {card_max} Einträge erlaubt ({current_count} vorhanden)."
+            )
+    instance_id = queries.add_list_entry(entity_id, event_instance_id, values)
     return {"status": "ok", "instance_id": instance_id}
 
 
@@ -189,49 +198,93 @@ def update_instance_value(instance_id: int, attribute_name: str, value: str,
     return {"status": "ok"}
 
 
-def get_entity_instances(entity_type: str) -> list:
-    return queries.get_entity_instances(entity_type)
+def get_entity_instances(entity_id: int) -> list:
+    return queries.get_entity_instances(entity_id)
 
 
-def get_reference_values(entity_type: str, attribute_name: str, event_instance_id: int) -> list:
-    return queries.get_reference_values(entity_type, attribute_name, event_instance_id)
+def get_reference_values(entity_id: int, attribute_name: str, event_instance_id: int) -> list:
+    return queries.get_reference_values(entity_id, attribute_name, event_instance_id)
 
 
-def rename_resource(old_name: str, new_name: str) -> dict:
-    queries.rename_entity_type(old_name, new_name)
+def rename_resource(entity_id: int, new_name: str) -> dict:
+    queries.rename_entity_type(entity_id, new_name)
     return {"status": "ok"}
 
 
-def delete_resource(entity_type: str, event_instance_id: int) -> dict:
-    queries.delete_resource_from_event(entity_type, event_instance_id)
+def delete_resource(entity_id: int, event_instance_id: int) -> dict:
+    queries.delete_resource_from_event(entity_id, event_instance_id)
     return {"status": "ok"}
 
 
-def rename_attribute(entity_type: str, old_name: str, new_name: str,
+def rename_attribute(entity_id: int, old_name: str, new_name: str,
                      source: str = 'entity', relation_id: int = None) -> dict:
     if source == 'relation' and relation_id:
         queries.update_relation_attribute_name(relation_id, old_name, new_name)
     else:
         # For entity attributes, keep the same datatype
-        attrs = queries.get_entity_type_attributes_list(entity_type)
+        attrs = queries.get_entity_type_attributes_list(entity_id)
         datatype = 'VARCHAR'
         for a in attrs:
             if a['attribute_name'] == old_name:
                 datatype = a['datatype']
                 break
-        queries.update_attribute(entity_type, old_name, new_name, datatype)
+        queries.update_attribute(entity_id, old_name, new_name, datatype)
     return {"status": "ok"}
 
 
-def delete_attribute_from_resource(entity_type: str, attr_name: str,
-                                   source: str = 'entity', relation_id: int = None) -> dict:
+def delete_attribute_from_resource(entity_id: int, attr_name: str,
+                                   source: str = 'entity', relation_id: int = None,
+                                   relation_name: str = None,
+                                   event_instance_id: int = None) -> dict:
     if source == 'relation' and relation_id:
         queries.delete_relation_attribute(relation_id, attr_name)
+    elif source == 'local' and event_instance_id:
+        rid = queries.get_relation_id_for_event_entity(event_instance_id, entity_id)
+        if rid:
+            queries.delete_relation_attribute(rid, attr_name)
+    elif source == 'relation_by_name' and relation_name:
+        rid = queries.get_relation_id_by_name(relation_name)
+        if rid:
+            queries.delete_relation_attribute(rid, attr_name)
     else:
-        queries.delete_attribute(entity_type, attr_name)
+        queries.delete_attribute(entity_id, attr_name)
     return {"status": "ok"}
 
 
 def delete_list_entry(instance_id: int, rel_instance_id: int = None) -> dict:
     queries.delete_list_entry(instance_id, rel_instance_id)
+    return {"status": "ok"}
+
+
+def add_entity_attribute(entity_id: int, attribute_name: str, datatype: str) -> dict:
+    queries.create_attribute(entity_id, attribute_name, datatype)
+    return {"status": "ok"}
+
+
+def get_relation_attrs(entity_id: int, event_instance_id: int) -> list:
+    return queries.get_relation_attributes_for_entity(entity_id, event_instance_id)
+
+
+def add_local_attribute(entity_id: int, event_instance_id: int, attribute_name: str, datatype: str) -> dict:
+    rel_id = queries.add_input_attribute_to_event_relation(
+        entity_id, event_instance_id, attribute_name, datatype, False, None)
+    return {"status": "ok", "relation_id": rel_id}
+
+
+def update_cardinality(participant_id: int, card_min: int, card_max) -> dict:
+    queries.update_cardinality(participant_id, card_min, card_max)
+    return {"status": "ok"}
+
+
+def get_users(query: str = None) -> list:
+    return queries.get_users(query)
+
+
+def get_user_classes() -> list:
+    return queries.get_user_classes()
+
+
+def add_persons_from_users(entity_id: int, event_instance_id: int,
+                           filter_class: str = None, filter_name: str = None) -> dict:
+    queries.create_selected_from_users_table(filter_class, filter_name)
     return {"status": "ok"}

@@ -153,7 +153,13 @@ const personenDropdownBtn = document.getElementById("personenDropdownBtn");
 const personenDropdown = document.getElementById("personenDropdown");
 const personenSearch = document.getElementById("personenSearch");
 const selectedGroupsContainer = document.getElementById("selectedGroups");
-const selectedGroups = new Set();
+const selectedUsers = new Map(); // user_id -> { user_id, display_name, email }
+const selectedClasses = new Set(); // class name strings like "5AHIT"
+// Compat shim used by exitEditMode / success handler
+const selectedGroups = { clear() { selectedUsers.clear(); selectedClasses.clear(); } };
+
+let _userSearchTimer = null;
+let _cachedClasses = null;
 
 personenDropdownBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -161,61 +167,147 @@ personenDropdownBtn.addEventListener("click", (e) => {
   attributDropdown.style.display = "none";
   closeAllSubDropdowns();
   personenDropdown.style.display = isOpen ? "none" : "flex";
-  if (!isOpen) personenSearch.focus();
+  if (!isOpen) {
+    personenSearch.focus();
+    fetchAndRenderDropdown(personenSearch.value.trim());
+  }
 });
 
 personenSearch.addEventListener("input", () => {
-  const query = personenSearch.value.toLowerCase();
-  const items = personenDropdown.querySelectorAll(".dropdown-item");
-  items.forEach(item => {
-    const group = item.dataset.group.toLowerCase();
-    const alreadySelected = selectedGroups.has(item.dataset.group);
-    item.style.display = (!alreadySelected && group.includes(query)) ? "flex" : "none";
-  });
+  clearTimeout(_userSearchTimer);
+  _userSearchTimer = setTimeout(() => {
+    fetchAndRenderDropdown(personenSearch.value.trim());
+    personenDropdown.style.display = "flex";
+  }, 250);
 });
 
 personenSearch.addEventListener("click", (e) => {
   e.stopPropagation();
   personenDropdown.style.display = "flex";
-  filterDropdownItems(personenSearch.value.toLowerCase());
+  fetchAndRenderDropdown(personenSearch.value.trim());
 });
 
 personenDropdown.addEventListener("click", (e) => {
   e.stopPropagation();
   const item = e.target.closest(".dropdown-item");
   if (!item) return;
-  const group = item.dataset.group;
-  if (selectedGroups.has(group)) return;
-  selectedGroups.add(group);
+
+  if (item.dataset.className) {
+    // Class item
+    const cls = item.dataset.className;
+    if (selectedClasses.has(cls)) return;
+    selectedClasses.add(cls);
+  } else if (item.dataset.userId) {
+    // Individual user item
+    const uid = parseInt(item.dataset.userId);
+    if (selectedUsers.has(uid)) return;
+    selectedUsers.set(uid, {
+      user_id: uid,
+      display_name: item.dataset.userName,
+      email: item.dataset.userEmail,
+    });
+  }
   item.style.display = "none";
   renderTags();
   personenSearch.value = "";
-  filterDropdownItems("");
 });
 
 document.addEventListener("click", () => {
   personenDropdown.style.display = "none";
 });
 
-function filterDropdownItems(query) {
-  const items = personenDropdown.querySelectorAll(".dropdown-item");
-  items.forEach(item => {
-    const group = item.dataset.group.toLowerCase();
-    const alreadySelected = selectedGroups.has(item.dataset.group);
-    item.style.display = (!alreadySelected && group.includes(query)) ? "flex" : "none";
-  });
+async function fetchAndRenderDropdown(query) {
+  // Fetch classes (cached after first load)
+  if (!_cachedClasses) {
+    try {
+      const cRes = await fetch("/api/user-classes");
+      _cachedClasses = await cRes.json();
+    } catch (err) {
+      console.error("User classes error:", err);
+      _cachedClasses = [];
+    }
+  }
+
+  // Fetch users
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  let users = [];
+  try {
+    const res = await fetch(`/api/users?${params}`);
+    users = await res.json();
+  } catch (err) {
+    console.error("User search error:", err);
+  }
+
+  personenDropdown.innerHTML = "";
+
+  // --- Class section ---
+  const q = (query || "").toLowerCase();
+  const matchingClasses = _cachedClasses.filter(
+    c => !selectedClasses.has(c) && c.toLowerCase().includes(q)
+  );
+  if (matchingClasses.length > 0) {
+    const header = document.createElement("div");
+    header.className = "dropdown-section-header";
+    header.innerHTML = "<p>Klassen</p>";
+    personenDropdown.appendChild(header);
+    matchingClasses.forEach(cls => {
+      const item = document.createElement("div");
+      item.className = "dropdown-item clickable";
+      item.dataset.className = cls;
+      item.innerHTML = `<p>${cls}</p>`;
+      personenDropdown.appendChild(item);
+    });
+  }
+
+  // --- User section ---
+  const filteredUsers = users.filter(u => !selectedUsers.has(u.user_id));
+  if (filteredUsers.length > 0) {
+    const header = document.createElement("div");
+    header.className = "dropdown-section-header";
+    header.innerHTML = "<p>Personen</p>";
+    personenDropdown.appendChild(header);
+    filteredUsers.forEach(u => {
+      const item = document.createElement("div");
+      item.className = "dropdown-item clickable";
+      item.dataset.userId = u.user_id;
+      item.dataset.userName = u.display_name;
+      item.dataset.userEmail = u.email || "";
+      const label = u.email ? `${u.display_name} — ${u.email}` : u.display_name;
+      item.innerHTML = `<p>${label}</p>`;
+      personenDropdown.appendChild(item);
+    });
+  }
+
+  if (matchingClasses.length === 0 && filteredUsers.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "dropdown-item";
+    empty.innerHTML = "<p>Keine Ergebnisse</p>";
+    empty.style.pointerEvents = "none";
+    empty.style.opacity = "0.5";
+    personenDropdown.appendChild(empty);
+  }
 }
 
 function renderTags() {
   selectedGroupsContainer.innerHTML = "";
-  selectedGroups.forEach(group => {
+  selectedClasses.forEach(cls => {
     const tag = document.createElement("div");
     tag.className = "group-tag";
-    tag.innerHTML = `<p>${group}</p><img src="/static/assets/images/tv_x.svg" alt="Remove">`;
+    tag.innerHTML = `<p>${cls}</p><img src="/static/assets/images/tv_x.svg" alt="Remove">`;
     tag.querySelector("img").addEventListener("click", () => {
-      selectedGroups.delete(group);
+      selectedClasses.delete(cls);
       renderTags();
-      filterDropdownItems(personenSearch.value.toLowerCase());
+    });
+    selectedGroupsContainer.appendChild(tag);
+  });
+  selectedUsers.forEach((user, uid) => {
+    const tag = document.createElement("div");
+    tag.className = "group-tag";
+    tag.innerHTML = `<p>${user.display_name}</p><img src="/static/assets/images/tv_x.svg" alt="Remove">`;
+    tag.querySelector("img").addEventListener("click", () => {
+      selectedUsers.delete(uid);
+      renderTags();
     });
     selectedGroupsContainer.appendChild(tag);
   });
@@ -254,6 +346,11 @@ attributDropdown.addEventListener("click", (e) => {
 document.addEventListener("click", () => {
   attributDropdown.style.display = "none";
   closeAllSubDropdowns();
+  // Close konfig dropdowns
+  const kdd = document.getElementById("konfigLinkDropdown");
+  if (kdd) kdd.style.display = "none";
+  const kad = document.getElementById("konfigAttrDatatypeDropdown");
+  if (kad) kad.style.display = "none";
 });
 
 // --- Generic sub-dropdown logic ---
@@ -295,6 +392,7 @@ subDropdowns.forEach(sd => {
     const item = e.target.closest(".dropdown-item");
     if (!item) return;
     textEl.textContent = item.querySelector("p").textContent;
+    if (item.dataset.entityId) textEl.dataset.entityId = item.dataset.entityId;
     dropdown.style.display = "none";
   });
 });
@@ -361,13 +459,14 @@ btnCreateRessource.addEventListener("click", async (e) => {
     showMessageBox("Fehler: Bitte zuerst ein einzelnes Event auswählen!");
     return;
   }
-  const groups = Array.from(selectedGroups);
+  const userIds = Array.from(selectedUsers.keys());
+  const classGroups = Array.from(selectedClasses);
 
   try {
     const response = await fetch("/api/resources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resourceName, groups, eventInstanceId: eventId }),
+      body: JSON.stringify({ resourceName, userIds, classGroups, eventInstanceId: eventId }),
     });
 
     if (response.ok) {
@@ -412,16 +511,16 @@ btnCreateAttribut.addEventListener("click", async (e) => {
       return;
     }
     payload.permission = document.getElementById("apiBerechtigungSelectedText").textContent;
-    payload.entityType = document.getElementById("apiHinzufuegenSelectedText").textContent;
-    if (payload.entityType === "Hinzufügen zu") {
+    payload.entityId = parseInt(document.getElementById("apiHinzufuegenSelectedText").dataset.entityId);
+    if (!payload.entityId) {
       showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
       return;
     }
   } else if (activeType === "ressource") {
-    payload.sourceEntity = document.getElementById("resRessourceSelectedText").textContent;
+    payload.sourceEntityId = parseInt(document.getElementById("resRessourceSelectedText").dataset.entityId);
     payload.sourceAttribute = document.getElementById("resAttributSelectedText").textContent;
-    payload.targetEntity = document.getElementById("resHinzufuegenSelectedText").textContent;
-    if (payload.sourceEntity === "Ressource wählen" || payload.targetEntity === "Hinzufügen zu" || payload.sourceAttribute === "Attribut der Ressource wählen") {
+    payload.targetEntityId = parseInt(document.getElementById("resHinzufuegenSelectedText").dataset.entityId);
+    if (!payload.sourceEntityId || payload.sourceAttribute === "Attribut der Ressource wählen" || !payload.targetEntityId) {
       showMessageBox("Fehler: Bitte alle Felder auswählen!");
       return;
     }
@@ -439,8 +538,8 @@ btnCreateAttribut.addEventListener("click", async (e) => {
     }
     payload.expirationDate = document.getElementById("eingabeZeitlimitDate").value || null;
     payload.isRequired = isPflichtfeld;
-    payload.entityType = document.getElementById("eingabeHinzufuegenSelectedText").textContent;
-    if (payload.entityType === "Hinzufügen zu") {
+    payload.entityId = parseInt(document.getElementById("eingabeHinzufuegenSelectedText").dataset.entityId);
+    if (!payload.entityId) {
       showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
       return;
     }
@@ -501,18 +600,22 @@ async function refreshTreeView() {
   }
 }
 
-async function addListEntry(entityType, attributes) {
+async function addListEntry(entityId, attributes) {
   const eventId = getCurrentEventId();
   if (!eventId || attributes.length === 0) return;
 
   try {
     const values = {};
-    attributes.filter(a => a.source === 'entity').forEach(attr => { values[attr.name] = ''; });
-    await fetch('/api/list-entry', {
+    const resp = await fetch('/api/list-entry', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entityType, eventInstanceId: eventId, values }),
+      body: JSON.stringify({ entityId, eventInstanceId: eventId, values }),
     });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null);
+      showMessageBox(errData?.error || "Fehler beim Hinzufügen des Eintrags!");
+      return;
+    }
     refreshTreeView();
   } catch (err) {
     console.error("Listeneintrag Fehler:", err);
@@ -535,7 +638,7 @@ function startInlineEdit(cell, instance, attr, resource) {
     p.replaceWith(select);
     select.focus();
 
-    fetch(`/api/reference-values/${encodeURIComponent(attr.ref_entity_type)}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`)
+    fetch(`/api/reference-values/${attr.ref_entity_id}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`)
       .then(r => r.json())
       .then(values => {
         values.forEach(v => {
@@ -571,8 +674,8 @@ function startInlineEdit(cell, instance, attr, resource) {
           instanceId: instance._id,
           attributeName: attr.name,
           value: newVal,
-          entityType: resource.entity_type,
-          source: attr.source || 'entity',
+          entityId: resource.entity_id,
+          source: attr.source || 'relation',
         };
         if (attr.source === 'relation') {
           payload.relationId = resource.relation_id;
@@ -644,8 +747,8 @@ function startInlineEdit(cell, instance, attr, resource) {
         instanceId: instance._id,
         attributeName: attr.name,
         value: newVal,
-        entityType: resource.entity_type,
-        source: attr.source || 'entity',
+        entityId: resource.entity_id,
+        source: attr.source || 'relation',
       };
       if (attr.source === 'relation') {
         payload.relationId = resource.relation_id;
@@ -674,6 +777,175 @@ function formatDisplayValue(val, datatype) {
     if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
   }
   return String(val);
+}
+
+// =========================================================================
+// Person Selector — Add persons from t_users to a hasPersons resource
+// =========================================================================
+let activePersonSelector = null;
+
+async function openPersonSelector(resource, block) {
+  // Close any existing selector
+  if (activePersonSelector) {
+    activePersonSelector.remove();
+    if (activePersonSelector._resourceId === resource.entity_id) {
+      activePersonSelector = null;
+      return;
+    }
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'person-selector-panel';
+  panel._resourceId = resource.entity_id;
+
+  // Class filter row
+  const filterRow = document.createElement('div');
+  filterRow.className = 'person-selector-filter-row';
+
+  const classSelect = document.createElement('select');
+  classSelect.className = 'person-selector-class-select';
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = 'Alle Gruppen';
+  classSelect.appendChild(allOpt);
+
+  // Fetch classes
+  try {
+    const classRes = await fetch('/api/user-classes');
+    const classes = await classRes.json();
+    const teacherOpt = document.createElement('option');
+    teacherOpt.value = 'Teacher';
+    teacherOpt.textContent = 'Lehrer';
+    classSelect.appendChild(teacherOpt);
+    classes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      classSelect.appendChild(opt);
+    });
+  } catch (err) {
+    console.error('User classes error:', err);
+  }
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'Name suchen...';
+  nameInput.className = 'person-selector-name-input';
+
+  filterRow.appendChild(classSelect);
+  filterRow.appendChild(nameInput);
+  panel.appendChild(filterRow);
+
+  // User list
+  const userList = document.createElement('div');
+  userList.className = 'person-selector-user-list';
+  panel.appendChild(userList);
+
+  // Action row
+  const actionRow = document.createElement('div');
+  actionRow.className = 'person-selector-action-row';
+
+  const addSelectedBtn = document.createElement('div');
+  addSelectedBtn.className = 'button-dark clickable person-selector-btn';
+  addSelectedBtn.innerHTML = '<p>Ausgewählte hinzufügen</p><img src="/static/assets/images/plus.svg" alt="Add">';
+
+  const closeBtn = document.createElement('div');
+  closeBtn.className = 'button-light clickable person-selector-btn';
+  closeBtn.innerHTML = '<p>Schließen</p>';
+  closeBtn.addEventListener('click', () => {
+    panel.remove();
+    activePersonSelector = null;
+  });
+
+  actionRow.appendChild(addSelectedBtn);
+  actionRow.appendChild(closeBtn);
+  panel.appendChild(actionRow);
+
+  // Insert panel after the header row in the block
+  const headerRow = block.querySelector('.tree-resource-header-row');
+  if (headerRow && headerRow.nextSibling) {
+    block.insertBefore(panel, headerRow.nextSibling);
+  } else {
+    block.appendChild(panel);
+  }
+  activePersonSelector = panel;
+
+  // Load users
+  async function loadUsers() {
+    const filterClass = classSelect.value || null;
+    const filterName = nameInput.value.trim() || null;
+    const params = new URLSearchParams();
+    if (filterClass) params.set('filterClass', filterClass);
+    if (filterName) params.set('filterName', filterName);
+    try {
+      const res = await fetch(`/api/users?${params}`);
+      const users = await res.json();
+      userList.innerHTML = '';
+      if (users.length === 0) {
+        userList.innerHTML = '<p class="person-selector-empty">Keine Benutzer gefunden</p>';
+        return;
+      }
+      users.forEach(u => {
+        const row = document.createElement('label');
+        row.className = 'person-selector-user-row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = u.user_id;
+        cb.dataset.displayName = u.display_name;
+        const info = document.createElement('div');
+        info.className = 'person-selector-user-info';
+        const classLabel = u.job_title && u.job_title.toLowerCase() !== 'teacher'
+          ? u.job_title : (u.job_title === null || u.job_title === undefined ? 'Lehrer' : 'Lehrer');
+        info.innerHTML = `<p>${u.display_name}</p><span>${classLabel}</span>`;
+        row.appendChild(cb);
+        row.appendChild(info);
+        userList.appendChild(row);
+      });
+    } catch (err) {
+      console.error('Load users error:', err);
+    }
+  }
+
+  await loadUsers();
+
+  // Filter events
+  classSelect.addEventListener('change', loadUsers);
+  let nameTimeout;
+  nameInput.addEventListener('input', () => {
+    clearTimeout(nameTimeout);
+    nameTimeout = setTimeout(loadUsers, 300);
+  });
+
+  // Add selected persons
+  addSelectedBtn.addEventListener('click', async () => {
+    const eventId = getCurrentEventId();
+    if (!eventId) return;
+    const filterClass = classSelect.value || null;
+    const filterName = nameInput.value.trim() || null;
+    try {
+      const resp = await fetch('/api/add-persons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityId: resource.entity_id,
+          eventInstanceId: eventId,
+          filterClass,
+          filterName,
+        }),
+      });
+      if (resp.ok) {
+        showMessageBox('Personen hinzugefügt!');
+        panel.remove();
+        activePersonSelector = null;
+        await refreshTreeView();
+      } else {
+        showMessageBox('Fehler beim Hinzufügen der Personen!');
+      }
+    } catch (err) {
+      console.error('Add persons error:', err);
+      showMessageBox('Fehler beim Hinzufügen der Personen!');
+    }
+  });
 }
 
 function renderTreeView(resources, unlinkedEntities = []) {
@@ -712,7 +984,17 @@ function renderTreeView(resources, unlinkedEntities = []) {
     const nameBtn = document.createElement("div");
     nameBtn.className = "button-dark tree-resource-name";
     if (resource.hasPersons) {
-      nameBtn.innerHTML = `<p>${resource.entity_type}</p><img src="/static/assets/images/users.svg" alt="Users">`;
+      nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
+      const addPersonBtn = document.createElement('img');
+      addPersonBtn.src = '/static/assets/images/users.svg';
+      addPersonBtn.alt = 'Add Persons';
+      addPersonBtn.className = 'tree-add-entry';
+      addPersonBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openPersonSelector(resource, block);
+      });
+      nameBtn.appendChild(addPersonBtn);
     } else if (attrs.length > 0) {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
       const plusBtn = document.createElement('img');
@@ -722,7 +1004,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
       plusBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        addListEntry(resource.entity_type, resource.attributes);
+        addListEntry(resource.entity_id, resource.attributes);
       });
       nameBtn.appendChild(plusBtn);
     } else {
@@ -755,6 +1037,16 @@ function renderTreeView(resources, unlinkedEntities = []) {
       headerRow.appendChild(header);
     });
     block.appendChild(headerRow);
+
+    // Cardinality count indicator (if FK participant exists)
+    if (resource.participantId != null) {
+      const cardRow = document.createElement("div");
+      cardRow.className = "tree-cardinality-row";
+      cardRow.innerHTML = `
+        <span class="tree-card-count ${resource.cardMax != null && resource.instances.length >= resource.cardMax ? 'tree-card-count-full' : ''}">${resource.instances.length}${resource.cardMax != null ? '/' + resource.cardMax : ''}</span>
+      `;
+      block.appendChild(cardRow);
+    }
 
     // Scrollable entries container
     const entriesContainer = document.createElement("div");
@@ -809,7 +1101,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
             }
             try {
               const eventId = getCurrentEventId();
-              const res = await fetch(`/api/reference-values/${encodeURIComponent(attr.ref_entity_type)}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`);
+              const res = await fetch(`/api/reference-values/${attr.ref_entity_id}/${encodeURIComponent(attr.ref_attribute_name)}?eventId=${eventId}`);
               const values = await res.json();
               const dd = document.createElement('div');
               dd.className = 'tree-cell-dropdown';
@@ -830,8 +1122,8 @@ function renderTreeView(resources, unlinkedEntities = []) {
                     instanceId: instance._id,
                     attributeName: attr.name,
                     value: v,
-                    entityType: resource.entity_type,
-                    source: attr.source || 'entity',
+                    entityId: resource.entity_id,
+                    source: attr.source || 'relation',
                   };
                   if (attr.source === 'relation') {
                     ddPayload.relationId = resource.relation_id;
@@ -861,7 +1153,9 @@ function renderTreeView(resources, unlinkedEntities = []) {
               return;
             }
             try {
-              const res = await fetch(`/api/entity-instances/${encodeURIComponent(attr.name)}`);
+              const refRes = cachedTreeData?.find(r => r.entity_type === attr.name);
+              if (!refRes) return;
+              const res = await fetch(`/api/entity-instances/${refRes.entity_id}`);
               const entries = await res.json();
               const dd = document.createElement('div');
               dd.className = 'tree-cell-dropdown';
@@ -876,8 +1170,8 @@ function renderTreeView(resources, unlinkedEntities = []) {
                     instanceId: instance._id,
                     attributeName: attr.name,
                     value: item.textContent,
-                    entityType: resource.entity_type,
-                    source: attr.source || 'entity',
+                    entityId: resource.entity_id,
+                    source: attr.source || 'relation',
                   };
                   if (attr.source === 'relation') {
                     ddPayload.relationId = resource.relation_id;
@@ -935,6 +1229,7 @@ async function refreshDropdowns() {
       typesDetailed.filter(t => t.hasPersons).forEach((t) => {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
+        item.dataset.entityId = t.entity_id;
         item.innerHTML = `<p>${t.name}</p>`;
         apiDd.appendChild(item);
       });
@@ -948,6 +1243,7 @@ async function refreshDropdowns() {
       typesDetailed.forEach((t) => {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
+        item.dataset.entityId = t.entity_id;
         item.innerHTML = `<p>${t.name}</p>`;
         dd.appendChild(item);
       });
@@ -960,6 +1256,7 @@ async function refreshDropdowns() {
       typesDetailed.forEach((t) => {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
+        item.dataset.entityId = t.entity_id;
         item.innerHTML = `<p>${t.name}</p>`;
         resDropdown.appendChild(item);
       });
@@ -1027,12 +1324,22 @@ function enterResourceEditMode(resource) {
   document.getElementById('ressourceCreateButtons').style.display = 'none';
   document.getElementById('ressourceEditButtons').style.display = 'flex';
 
+  // Show/hide cardinality section
+  const cardSection = document.getElementById('ressourceCardinalitySection');
+  if (resource.participantId != null) {
+    cardSection.style.display = '';
+    document.getElementById('ressourceCardMin').value = resource.cardMin ?? 0;
+    document.getElementById('ressourceCardMax').value = resource.cardMax != null ? resource.cardMax : '';
+  } else {
+    cardSection.style.display = 'none';
+  }
+
   // Show cancel button
   document.getElementById('btnCancelRessource').style.display = '';
 }
 
 function enterAttributeEditMode(attr, resource) {
-  editingAttribute = { ...attr, entity_type: resource.entity_type, relation_id: resource.relation_id };
+  editingAttribute = { ...attr, entity_type: resource.entity_type, entity_id: resource.entity_id, relation_id: resource.relation_id };
   editingResource = null;
 
   // Show attribute section, hide resource section
@@ -1116,6 +1423,11 @@ function exitEditMode() {
   document.getElementById('personenDropdownBtn').style.display = '';
   document.getElementById('selectedGroups').style.display = '';
 
+  // Hide cardinality section
+  document.getElementById('ressourceCardinalitySection').style.display = 'none';
+  document.getElementById('ressourceCardMin').value = 0;
+  document.getElementById('ressourceCardMax').value = '';
+
   // Restore update attribute button (hidden for abhängige Ressource)
   document.getElementById('btnUpdateAttribut').style.display = '';
 
@@ -1154,6 +1466,35 @@ document.getElementById('btnCancelAttribut').addEventListener('click', (e) => {
   exitEditMode();
 });
 
+// --- Save Cardinality ---
+document.getElementById('btnSaveCardinality').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!editingResource || editingResource.participantId == null) return;
+  const minVal = parseInt(document.getElementById('ressourceCardMin').value) || 0;
+  const maxRaw = document.getElementById('ressourceCardMax').value.trim();
+  const maxVal = maxRaw === '' ? null : parseInt(maxRaw);
+  if (maxVal !== null && maxVal < minVal) {
+    showMessageBox("Fehler: Max darf nicht kleiner als Min sein!");
+    return;
+  }
+  try {
+    const resp = await fetch("/api/cardinality", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId: editingResource.participantId, cardMin: minVal, cardMax: maxVal }),
+    });
+    if (resp.ok) {
+      showMessageBox("Kardinalität gespeichert!");
+      await refreshTreeView();
+    } else {
+      showMessageBox("Fehler beim Speichern der Kardinalität!");
+    }
+  } catch (err) {
+    console.error("Cardinality save error:", err);
+    showMessageBox("Fehler beim Speichern der Kardinalität!");
+  }
+});
+
 // --- Update Resource ---
 document.getElementById('btnUpdateRessource').addEventListener('click', async (e) => {
   e.stopPropagation();
@@ -1170,7 +1511,7 @@ document.getElementById('btnUpdateRessource').addEventListener('click', async (e
       const response = await fetch('/api/resources/rename', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldName: editingResource.entity_type, newName }),
+        body: JSON.stringify({ entityId: editingResource.entity_id, newName }),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => null);
@@ -1203,7 +1544,7 @@ document.getElementById('btnDeleteRessource').addEventListener('click', async (e
     const response = await fetch('/api/resources/delete', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entityType: editingResource.entity_type, eventInstanceId: eventId }),
+      body: JSON.stringify({ entityId: editingResource.entity_id, eventInstanceId: eventId }),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => null);
@@ -1241,10 +1582,10 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          entityType: editingAttribute.entity_type,
+          entityId: editingAttribute.entity_id,
           oldName: editingAttribute.name,
           newName,
-          source: editingAttribute.source || 'entity',
+          source: editingAttribute.source || 'relation',
           relationId: editingAttribute.relation_id,
         }),
       });
@@ -1274,9 +1615,9 @@ document.getElementById('btnDeleteAttribut').addEventListener('click', async (e)
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        entityType: editingAttribute.entity_type,
+        entityId: editingAttribute.entity_id,
         attributeName: editingAttribute.name,
-        source: editingAttribute.source || 'entity',
+        source: editingAttribute.source || 'relation',
         relationId: editingAttribute.relation_id,
       }),
     });

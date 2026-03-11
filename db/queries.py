@@ -1,5 +1,40 @@
 from db.connection import get_connection
 
+
+# =========================================================================
+# Internal helpers for event-scoped relation naming
+# =========================================================================
+
+def _get_entity_type_by_id(conn, entity_id):
+    """Return the entity_type string for the given entity_id (uses existing conn)."""
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT entity_type FROM t_entity WHERE entity_id = ?", (entity_id,))
+    row = cur.fetchone()
+    cur.close()
+    return row['entity_type'] if row else None
+
+
+def _get_event_entity_type(conn, event_instance_id):
+    """Return the entity_type string for an event instance (uses existing conn)."""
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT e.entity_type FROM t_values v
+           JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+           JOIN t_entity e ON a.fk_entity_id = e.entity_id
+           WHERE v.entity_instance_id = ? AND e.isEvent = TRUE
+           LIMIT 1""",
+        (event_instance_id,),
+    )
+    row = cur.fetchone()
+    cur.close()
+    return row['entity_type'] if row else None
+
+
+def _make_rel_name(event_entity_type, resource_type):
+    """Build a relation name scoped to a specific event type and resource type."""
+    return f"{event_entity_type.lower()}_{resource_type.lower()}"
+
+
 # Format: (instance_id, attribute_name, value)
 def fetch_all_events():     
     conn = get_connection()
@@ -59,6 +94,37 @@ def create_selected_from_users_table(filter_class: str, filter_name: str):
     conn.close()
     return rows
 
+
+def get_users(query: str = None):
+    """Fetch users from t_users, searching by display_name or email."""
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    sql = "SELECT user_id, display_name, email, job_title FROM t_users WHERE 1=1"
+    params = []
+    if query:
+        sql += " AND (LOWER(display_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))"
+        params.extend([f"%{query}%", f"%{query}%"])
+    sql += " ORDER BY display_name LIMIT 50"
+    cur.execute(sql, tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_user_classes():
+    """Fetch distinct class values (job_title) from t_users."""
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT DISTINCT job_title
+        FROM t_users
+        WHERE job_title IS NOT NULL AND LOWER(job_title) != 'teacher'
+        ORDER BY job_title
+    """)
+    classes = [row['job_title'] for row in cur.fetchall()]
+    conn.close()
+    return classes
+
 #   get_entity_instance_by_id(IN p_entity_instance_id INT, IN p_isEvent BOOLEAN)
 def get_entity_instance_by_id(id: int, is_event: bool = True):
     conn = get_connection()
@@ -87,15 +153,17 @@ def get_event_stats_single(event_instance_id: int) -> dict:
     conn.close()
     return rows[0] if rows else {}
 
-def create_attribute(entity_type: str, attribute_name: str, datatype: str, is_event: bool = False):
+def create_attribute(entity_id: int, attribute_name: str, datatype: str, is_event: bool = False):
     conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
     cur = conn.cursor()
     cur.execute("CALL create_attribute(?, ?, ?, ?)", (entity_type, attribute_name, datatype, is_event))
     conn.commit()
     conn.close()
 
-def delete_attribute(entity_type: str, attribute_name: str):
+def delete_attribute(entity_id: int, attribute_name: str):
     conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
     cur = conn.cursor()
     cur.execute("CALL delete_attribute(?, ?)", (entity_type, attribute_name))
     conn.commit()
@@ -103,34 +171,45 @@ def delete_attribute(entity_type: str, attribute_name: str):
     conn.close()
     return affected
 
-def update_attribute(entity_type: str, old_attribute_name: str, new_attribute_name: str, new_datatype: str):
+def update_attribute(entity_id: int, old_attribute_name: str, new_attribute_name: str, new_datatype: str):
     conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
     cur = conn.cursor()
     cur.execute("CALL update_attribute(?, ?, ?, ?)", (entity_type, old_attribute_name, new_attribute_name, new_datatype))
     conn.commit()
 
 
-def rename_entity_type(old_name: str, new_name: str):
+def rename_entity_type(entity_id: int, new_name: str):
     """Rename an entity type."""
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE t_entity SET entity_type = ? WHERE entity_type = ?", (new_name, old_name))
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT entity_type FROM t_entity WHERE entity_id = ?", (entity_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return
+    old_name = row['entity_type']
+    cur.close()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE t_entity SET entity_type = ? WHERE entity_id = ?", (new_name, entity_id))
     # Also update relation names that reference this entity
-    cur.execute("UPDATE t_relation SET name = REPLACE(name, ?, ?) WHERE name LIKE ?",
+    cur2.execute("UPDATE t_relation SET name = REPLACE(name, ?, ?) WHERE name LIKE ?",
                 (old_name.lower(), new_name.lower(), f"%{old_name.lower()}%"))
     # Update ref_entity_type in dependent resource attributes
-    cur.execute("UPDATE t_attribute SET ref_entity_type = ? WHERE ref_entity_type = ?",
+    cur2.execute("UPDATE t_attribute SET ref_entity_type = ? WHERE ref_entity_type = ?",
                 (new_name, old_name))
     conn.commit()
     conn.close()
 
 
-def delete_resource_from_event(entity_type: str, event_instance_id: int):
+def delete_resource_from_event(entity_id: int, event_instance_id: int):
     """Delete a resource (entity type) and its relation to the event."""
     conn = get_connection()
     try:
+        entity_type = _get_entity_type_by_id(conn, entity_id)
         # Find the relation between event and this resource
-        rel_name = f"event_{entity_type.lower()}"
+        event_et = _get_event_entity_type(conn, event_instance_id)
+        rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
         cur = conn.cursor(dictionary=True)
         cur.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
         rel_row = cur.fetchone()
@@ -171,6 +250,34 @@ def delete_resource_from_event(entity_type: str, event_instance_id: int):
         raise e
     finally:
         conn.close()
+
+
+def get_relation_id_by_name(relation_name: str):
+    """Look up a relation ID by its name."""
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT relation_id FROM t_relation WHERE name = ?", (relation_name,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['relation_id'] if row else None
+
+
+def get_relation_id_for_event_entity(event_instance_id: int, entity_id: int):
+    """Get relation ID between an event and a resource entity type, using event-scoped naming."""
+    conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    if not event_et or not entity_type:
+        conn.close()
+        return None
+    rel_name = _make_rel_name(event_et, entity_type)
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['relation_id'] if row else None
 
 
 def delete_relation_attribute(relation_id: int, attribute_name: str):
@@ -299,24 +406,14 @@ def _ensure_relation_participants(conn, rel_id, entity_type_a, entity_type_b):
             cur2.close()
 
 
-def create_resource_for_event(resource_name: str, groups: list, event_instance_id: int):
-    """Create entity type, import persons from groups, link to event via relation."""
+def create_resource_for_event(resource_name: str, user_ids: list, class_groups: list, event_instance_id: int):
+    """Create entity type, import persons from user_ids and class_groups, link to event via relation."""
     conn = get_connection()
+    has_persons = bool(user_ids or class_groups)
 
     try:
         # 0. Look up the event's actual entity type
-        cur0 = conn.cursor(dictionary=True)
-        cur0.execute(
-            """SELECT e.entity_type FROM t_values v
-               JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-               JOIN t_entity e ON a.fk_entity_id = e.entity_id
-               WHERE v.entity_instance_id = ? AND e.isEvent = TRUE
-               LIMIT 1""",
-            (event_instance_id,),
-        )
-        event_entity_row = cur0.fetchone()
-        cur0.close()
-        event_entity_type = event_entity_row['entity_type'] if event_entity_row else 'Event'
+        event_entity_type = _get_event_entity_type(conn, event_instance_id) or 'Event'
 
         # 1. Create entity type if not exists
         cur1 = conn.cursor(dictionary=True)
@@ -326,15 +423,21 @@ def create_resource_for_event(resource_name: str, groups: list, event_instance_i
 
         if not exists:
             cur1b = conn.cursor(dictionary=True)
-            cur1b.execute(
-                "CALL create_entity_with_attributes(?, ?, ?, FALSE, ?)",
-                (resource_name, "", "", ""),
-            )
+            if has_persons:
+                cur1b.execute(
+                    "CALL create_entity_with_attributes(?, ?, ?, FALSE, ?)",
+                    (resource_name, "uid", "INTEGER", ""),
+                )
+            else:
+                cur1b.execute(
+                    "CALL create_entity_with_attributes(?, ?, ?, FALSE, ?)",
+                    (resource_name, "", "", ""),
+                )
             _drain(cur1b)
             cur1b.close()
 
-        # Mark as person resource if groups were selected
-        if groups:
+        # Mark as person resource and import users
+        if has_persons:
             cur_p = conn.cursor()
             cur_p.execute(
                 """UPDATE t_attribute SET isPersonRessource = TRUE
@@ -343,8 +446,51 @@ def create_resource_for_event(resource_name: str, groups: list, event_instance_i
             )
             cur_p.close()
 
+            # Collect all user_ids to import (from direct picks + class groups)
+            all_uids = set(int(u) for u in user_ids)
+
+            for cls in class_groups:
+                cur_c = conn.cursor(dictionary=True)
+                if cls.lower() == 'teacher':
+                    cur_c.execute(
+                        "SELECT user_id FROM t_users WHERE job_title IS NULL OR LOWER(job_title) = 'teacher'"
+                    )
+                else:
+                    cur_c.execute(
+                        "SELECT user_id FROM t_users WHERE LOWER(job_title) = LOWER(?)",
+                        (cls,),
+                    )
+                for row in cur_c.fetchall():
+                    all_uids.add(row['user_id'])
+                cur_c.close()
+
+            # Import each user
+            pk_name = f"{resource_name}_id"
+            for uid_val in all_uids:
+                uid = str(uid_val)
+                # Avoid duplicates
+                cur_dup = conn.cursor(dictionary=True)
+                cur_dup.execute(
+                    """SELECT COUNT(*) AS cnt FROM t_values v
+                       JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+                       JOIN t_entity e ON a.fk_entity_id = e.entity_id
+                       WHERE e.entity_type = ? AND a.attribute_name = ? AND v.value = ?""",
+                    (resource_name, pk_name, uid),
+                )
+                already = cur_dup.fetchone()['cnt']
+                cur_dup.close()
+
+                if already == 0:
+                    cur_inst = conn.cursor(dictionary=True)
+                    cur_inst.execute(
+                        "CALL create_entity_instance(?, ?, ?)",
+                        (resource_name, f"{pk_name},uid", f"{uid},{uid}"),
+                    )
+                    _drain(cur_inst)
+                    cur_inst.close()
+
         # 3. Create / get relation between Event and this resource
-        rel_name = f"event_{resource_name.lower()}"
+        rel_name = _make_rel_name(event_entity_type, resource_name)
         cur3 = conn.cursor(dictionary=True)
         cur3.execute(
             "CALL create_relation(?, ?, ?, @rel_id)",
@@ -421,10 +567,11 @@ def create_resource_for_event(resource_name: str, groups: list, event_instance_i
         conn.close()
 
 
-def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> int:
+def add_list_entry(entity_id: int, event_instance_id: int, values: dict) -> int:
     """Create a new entity instance and link it to the event."""
     conn = get_connection()
     try:
+        entity_type = _get_entity_type_by_id(conn, entity_id)
         # Build attribute_names and values strings from provided values
         attr_names = ",".join(values.keys()) if values else ""
         attr_values = ",".join(str(v) for v in values.values()) if values else ""
@@ -443,10 +590,9 @@ def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> in
         cur2.execute(
             """SELECT v.value_id, v.entity_instance_id FROM t_values v
                JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-               JOIN t_entity e ON a.fk_entity_id = e.entity_id
-               WHERE e.entity_type = ? AND a.is_unique = TRUE
+               WHERE a.fk_entity_id = ? AND a.is_unique = TRUE
                ORDER BY v.value_id DESC LIMIT 1""",
-            (entity_type,),
+            (entity_id,),
         )
         new_pk_row = cur2.fetchone()
         cur2.close()
@@ -477,7 +623,8 @@ def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> in
         ev_pk = ev_pk_row['value_id']
 
         # Get relation id
-        rel_name = f"event_{entity_type.lower()}"
+        event_et = _get_event_entity_type(conn, event_instance_id)
+        rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
         cur4 = conn.cursor(dictionary=True)
         cur4.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
         rel_row = cur4.fetchone()
@@ -501,29 +648,145 @@ def add_list_entry(entity_type: str, event_instance_id: int, values: dict) -> in
         conn.close()
 
 
-def add_api_attribute_to_resource(entity_type: str, attribute_name: str, datatype: str = 'VARCHAR', is_required: bool = False):
-    """Add an attribute (from t_users info) to an entity type."""
+def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
+                                   event_instance_id: int,
+                                   datatype: str = 'VARCHAR', is_required: bool = False):
+    """Add an API attribute as a relation attribute and populate values from t_users."""
+    field_map = {"Name": "display_name", "Email": "email", "Klasse": "job_title"}
+    t_users_col = field_map.get(attribute_name)
+    if not t_users_col:
+        return None
+
     conn = get_connection()
-    cur = conn.cursor()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
+
     try:
-        cur.execute("CALL create_attribute(?, ?, ?, ?)", (entity_type, attribute_name, datatype, is_required))
-        try:
-            while cur.nextset():
-                pass
-        except Exception:
-            pass
+        # Find relation
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
+        rel_row = cur.fetchone()
+        cur.close()
+        if not rel_row:
+            conn.close()
+            return None
+        rel_id = rel_row['relation_id']
+
+        # Create relation attribute (like Eingabe does)
+        cur2 = conn.cursor(dictionary=True)
+        cur2.execute(
+            "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (rel_id, attribute_name, datatype, False, is_required, False, None, None, None),
+        )
+        _drain(cur2)
+        cur2.close()
+
+        # Get the new attribute_id
+        cur3 = conn.cursor(dictionary=True)
+        cur3.execute(
+            """SELECT a.attribute_id FROM t_attribute a
+               JOIN t_relation_participant rp ON a.attribute_id = rp.fk_att_id_rel
+               WHERE rp.fk_relation_id = ? AND a.attribute_name = ?
+                 AND a.fk_entity_id IS NULL AND rp.fk_att_id = rp.fk_att_id_rel""",
+            (rel_id, attribute_name),
+        )
+        attr_row = cur3.fetchone()
+        cur3.close()
+        if not attr_row:
+            conn.commit()
+            return rel_id
+        attr_id = attr_row['attribute_id']
+
+        # Get all relation instances (entity_instance_id + relation_instance_id)
+        cur4 = conn.cursor(dictionary=True)
+        cur4.execute(
+            """SELECT DISTINCT v2.entity_instance_id, rv1.relation_instance_id
+               FROM t_relation_values rv1
+               JOIN t_relation_values rv2
+                 ON rv1.relation_instance_id = rv2.relation_instance_id
+                 AND rv1.fk_relation_id = rv2.fk_relation_id
+               JOIN t_values v1 ON rv1.fk_value_id = v1.value_id
+               JOIN t_values v2 ON rv2.fk_value_id = v2.value_id
+               JOIN t_attribute a1 ON v1.fk_attribute_id = a1.attribute_id
+               JOIN t_attribute a2 ON v2.fk_attribute_id = a2.attribute_id
+               LEFT JOIN t_entity e1 ON a1.fk_entity_id = e1.entity_id
+               LEFT JOIN t_entity e2 ON a2.fk_entity_id = e2.entity_id
+               WHERE rv1.fk_relation_id = ?
+                 AND v1.entity_instance_id = ?
+                 AND e1.isEvent = TRUE
+                 AND e2.entity_type = ?
+                 AND v2.entity_instance_id IS NOT NULL""",
+            (rel_id, event_instance_id, entity_type),
+        )
+        instances = cur4.fetchall()
+        cur4.close()
+
+        # For each instance, get PK value (= user_id) and populate from t_users
+        for inst in instances:
+            eid = inst['entity_instance_id']
+            riid = inst['relation_instance_id']
+
+            # Get entity PK value (stored as user_id during import)
+            cur5 = conn.cursor(dictionary=True)
+            cur5.execute(
+                """SELECT v.value FROM t_values v
+                   JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
+                   WHERE v.entity_instance_id = ? AND a.is_unique = TRUE
+                   LIMIT 1""",
+                (eid,),
+            )
+            pk_row = cur5.fetchone()
+            cur5.close()
+            if not pk_row or not pk_row['value']:
+                continue
+
+            # Look up t_users
+            cur6 = conn.cursor(dictionary=True)
+            cur6.execute(
+                "SELECT display_name, email, job_title FROM t_users WHERE user_id = ?",
+                (int(pk_row['value']),),
+            )
+            user_row = cur6.fetchone()
+            cur6.close()
+            if not user_row:
+                continue
+
+            val = user_row.get(t_users_col)
+            if val is None:
+                val = ""
+
+            # Create value and link to relation instance
+            cur7 = conn.cursor()
+            cur7.execute(
+                "INSERT INTO t_values(fk_attribute_id, value, entity_instance_id) VALUES (?, ?, NULL)",
+                (attr_id, str(val)),
+            )
+            val_id = cur7.lastrowid
+            cur7.close()
+
+            cur8 = conn.cursor()
+            cur8.execute(
+                """INSERT INTO t_relation_values(fk_relation_id, fk_attribute_id, fk_value_id, relation_instance_id)
+                   VALUES (?, ?, ?, ?)""",
+                (rel_id, attr_id, val_id, riid),
+            )
+            cur8.close()
+
         conn.commit()
+        return rel_id
     except Exception as e:
         conn.rollback()
         raise e
     finally:
-        cur.close()
         conn.close()
 
 
-def create_dependent_resource_relation(source_entity: str, target_entity: str):
+def create_dependent_resource_relation(source_entity_id: int, target_entity_id: int):
     """Create a relation between two entity types."""
     conn = get_connection()
+    source_entity = _get_entity_type_by_id(conn, source_entity_id)
+    target_entity = _get_entity_type_by_id(conn, target_entity_id)
     rel_name = f"{source_entity.lower()}_{target_entity.lower()}"
 
     cur1 = conn.cursor(dictionary=True)
@@ -550,14 +813,18 @@ def create_dependent_resource_relation(source_entity: str, target_entity: str):
     return rel_id
 
 
-def add_dependent_resource_attribute(target_entity: str, event_instance_id: int,
-                                     source_entity: str, source_attribute: str):
+def add_dependent_resource_attribute(target_entity_id: int, event_instance_id: int,
+                                     source_entity_id: int, source_attribute: str):
     """Add a dependent resource attribute to the event-target relation.
     The attribute shows a dropdown of values from source_entity's source_attribute."""
     conn = get_connection()
     cur1 = conn.cursor(dictionary=True)
 
-    rel_name = f"event_{target_entity.lower()}"
+    target_entity = _get_entity_type_by_id(conn, target_entity_id)
+    source_entity = _get_entity_type_by_id(conn, source_entity_id)
+
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, target_entity) if event_et else f"event_{target_entity.lower()}"
     cur1.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
     rel_row = cur1.fetchone()
     cur1.close()
@@ -581,7 +848,7 @@ def add_dependent_resource_attribute(target_entity: str, event_instance_id: int,
              AND a.fk_entity_id IS NULL AND rp.fk_att_id = rp.fk_att_id_rel
            LIMIT 1""",
         (source_entity, source_attribute,
-         f"event_{source_entity.lower()}", source_attribute),
+         _make_rel_name(event_et, source_entity) if event_et else f"event_{source_entity.lower()}", source_attribute),
     )
     dt_row = cur_dt.fetchone()
     cur_dt.close()
@@ -604,9 +871,11 @@ def add_dependent_resource_attribute(target_entity: str, event_instance_id: int,
     return rel_row['relation_id']
 
 
-def get_reference_values(entity_type: str, attribute_name: str, event_instance_id: int):
+def get_reference_values(entity_id: int, attribute_name: str, event_instance_id: int):
     """Get all values of a specific attribute from instances of an entity type linked to an event."""
     conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id) if event_instance_id else None
     cur = conn.cursor(dictionary=True)
     # Get values from entity attributes
     cur.execute(
@@ -622,6 +891,7 @@ def get_reference_values(entity_type: str, attribute_name: str, event_instance_i
     rows = cur.fetchall()
     if not rows:
         # Try relation attributes
+        rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
         cur.execute(
             """SELECT DISTINCT v.value
                FROM t_relation_values rv
@@ -631,7 +901,7 @@ def get_reference_values(entity_type: str, attribute_name: str, event_instance_i
                WHERE r.name = ? AND a.attribute_name = ?
                  AND v.value IS NOT NULL AND v.value != ''
                ORDER BY v.value""",
-            (f"event_{entity_type.lower()}", attribute_name),
+            (rel_name, attribute_name),
         )
         rows = cur.fetchall()
     cur.close()
@@ -639,14 +909,16 @@ def get_reference_values(entity_type: str, attribute_name: str, event_instance_i
     return [r['value'] for r in rows]
 
 
-def add_input_attribute_to_event_relation(entity_type: str, event_instance_id: int,
+def add_input_attribute_to_event_relation(entity_id: int, event_instance_id: int,
                                           attr_name: str, datatype: str,
                                           is_required: bool, expiration_date: str):
     """Add an input field attribute to the relation between event and entity type."""
     conn = get_connection()
     cur1 = conn.cursor(dictionary=True)
 
-    rel_name = f"event_{entity_type.lower()}"
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
     cur1.execute("SELECT relation_id FROM t_relation WHERE name = ?", (rel_name,))
     rel_row = cur1.fetchone()
     cur1.close()
@@ -674,7 +946,7 @@ def add_input_attribute_to_event_relation(entity_type: str, event_instance_id: i
     return rel_row['relation_id']
 
 
-def get_entity_instances(entity_type: str):
+def get_entity_instances(entity_id: int):
     """Get all instances of an entity type with their first non-PK attribute as label."""
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
@@ -682,10 +954,9 @@ def get_entity_instances(entity_type: str):
         """SELECT DISTINCT v.entity_instance_id AS id, v.value AS label
            FROM t_values v
            JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-           JOIN t_entity e ON a.fk_entity_id = e.entity_id
-           WHERE e.entity_type = ? AND a.is_unique = FALSE
+           WHERE a.fk_entity_id = ? AND a.is_unique = FALSE
            ORDER BY v.entity_instance_id""",
-        (entity_type,),
+        (entity_id,),
     )
     # Group by instance, take first non-null value as label
     instances = {}
@@ -767,21 +1038,23 @@ def update_relation_instance_value(relation_id: int, rel_instance_id: int,
 
 
 def get_event_entity_types(event_instance_id):
-    """Get non-event entity types linked to an event via relations."""
+    """Get non-event entity types linked to an event via relations.
+    Returns list of dicts: [{"entity_type": ..., "entity_id": ...}, ...]
+    """
     conn = get_connection()
 
     if event_instance_id is None:
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT entity_type FROM t_entity WHERE isEvent = FALSE")
+        cur.execute("SELECT entity_id, entity_type FROM t_entity WHERE isEvent = FALSE")
         rows = cur.fetchall()
         cur.close()
         conn.close()
-        return [r['entity_type'] for r in rows]
+        return sorted([{"entity_type": r['entity_type'], "entity_id": r['entity_id']} for r in rows], key=lambda x: x['entity_type'])
 
     # 1. Entity types with actual relation instances (have data)
     cur1 = conn.cursor(dictionary=True)
     cur1.execute(
-        """SELECT DISTINCT e2.entity_type
+        """SELECT DISTINCT e2.entity_type, e2.entity_id
            FROM t_relation_values rv1
            JOIN t_values v1 ON rv1.fk_value_id = v1.value_id
            JOIN t_attribute a1 ON v1.fk_attribute_id = a1.attribute_id
@@ -797,7 +1070,7 @@ def get_event_entity_types(event_instance_id):
              AND e2.isEvent = FALSE""",
         (event_instance_id,),
     )
-    types = {r['entity_type'] for r in cur1.fetchall()}
+    types_map = {r['entity_type']: r['entity_id'] for r in cur1.fetchall()}
     cur1.close()
 
     # 2. Also find entity types via relation_participant structure
@@ -817,7 +1090,7 @@ def get_event_entity_types(event_instance_id):
     if ev_type_row:
         cur3 = conn.cursor(dictionary=True)
         cur3.execute(
-            """SELECT DISTINCT e2.entity_type
+            """SELECT DISTINCT e2.entity_type, e2.entity_id
                FROM t_relation_participant rp1
                JOIN t_attribute a1 ON rp1.fk_att_id = a1.attribute_id
                JOIN t_entity e1 ON a1.fk_entity_id = e1.entity_id
@@ -829,36 +1102,132 @@ def get_event_entity_types(event_instance_id):
             (ev_type_row['entity_type'],),
         )
         for r in cur3.fetchall():
-            types.add(r['entity_type'])
+            types_map.setdefault(r['entity_type'], r['entity_id'])
         cur3.close()
 
     conn.close()
-    return sorted(types)
+    return sorted([{"entity_type": t, "entity_id": eid} for t, eid in types_map.items()], key=lambda x: x['entity_type'])
 
 
 def get_event_entity_types_detailed(event_instance_id):
-    """Get non-event entity types linked to an event, with hasPersons flag."""
+    """Get non-event entity types linked to an event, with hasPersons flag and cardinality."""
     types = get_event_entity_types(event_instance_id)
     if not types:
         return []
     conn = get_connection()
+    event_et = _get_event_entity_type(conn, event_instance_id)
     result = []
-    for t in types:
+    for td in types:
+        t = td['entity_type']
+        t_id = td['entity_id']
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """SELECT COUNT(*) AS cnt FROM t_attribute a
-               JOIN t_entity e ON a.fk_entity_id = e.entity_id
-               WHERE e.entity_type = ? AND a.isPersonRessource = TRUE""",
-            (t,),
+               WHERE a.fk_entity_id = ? AND a.isPersonRessource = TRUE""",
+            (t_id,),
         )
         row = cur.fetchone()
         cur.close()
-        result.append({"name": t, "hasPersons": row['cnt'] > 0})
+
+        # Get cardinality from FK participant in event relation
+        rel_name = _make_rel_name(event_et, t) if event_et else f"event_{t.lower()}"
+        cur2 = conn.cursor(dictionary=True)
+        cur2.execute(
+            """SELECT rp.participant_id, rp.card_min, rp.card_max
+               FROM t_relation_participant rp
+               JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
+               JOIN t_entity e ON a.fk_entity_id = e.entity_id
+               JOIN t_relation r ON rp.fk_relation_id = r.relation_id
+               WHERE r.name = ? AND e.entity_id = ?
+                 AND rp.fk_att_id != rp.fk_att_id_rel
+               LIMIT 1""",
+            (rel_name, t_id),
+        )
+        card_row = cur2.fetchone()
+        cur2.close()
+
+        entry = {"name": t, "entity_id": t_id, "hasPersons": row['cnt'] > 0}
+        if card_row:
+            entry["participantId"] = card_row['participant_id']
+            entry["cardMin"] = card_row['card_min']
+            entry["cardMax"] = card_row['card_max']
+        result.append(entry)
     conn.close()
     return result
 
 
-def get_entity_type_attributes_list(entity_type: str):
+def update_cardinality(participant_id: int, card_min: int, card_max):
+    """Update cardinality for a relation participant."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """UPDATE t_relation_participant
+           SET card_min = ?, card_max = ?
+           WHERE participant_id = ?""",
+        (card_min, card_max, participant_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_relation_instance_count(entity_id: int, event_instance_id: int) -> int:
+    """Count how many instances of entity_id are linked to the event."""
+    conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT COUNT(DISTINCT v2.entity_instance_id) AS cnt
+           FROM t_relation_values rv1
+           JOIN t_relation_values rv2
+             ON rv1.relation_instance_id = rv2.relation_instance_id
+             AND rv1.fk_relation_id = rv2.fk_relation_id
+           JOIN t_values v1 ON rv1.fk_value_id = v1.value_id
+           JOIN t_values v2 ON rv2.fk_value_id = v2.value_id
+           JOIN t_attribute a1 ON v1.fk_attribute_id = a1.attribute_id
+           JOIN t_attribute a2 ON v2.fk_attribute_id = a2.attribute_id
+           LEFT JOIN t_entity e1 ON a1.fk_entity_id = e1.entity_id
+           LEFT JOIN t_entity e2 ON a2.fk_entity_id = e2.entity_id
+           JOIN t_relation r ON rv1.fk_relation_id = r.relation_id
+           WHERE r.name = ?
+             AND v1.entity_instance_id = ?
+             AND e1.isEvent = TRUE
+             AND e2.entity_id = ?""",
+        (rel_name, event_instance_id, entity_id),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['cnt'] if row else 0
+
+
+def get_cardinality_for_entity_in_event(entity_id: int, event_instance_id: int):
+    """Get card_max for an entity type's FK participant in the event relation."""
+    conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT rp.card_max
+           FROM t_relation_participant rp
+           JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
+           JOIN t_entity e ON a.fk_entity_id = e.entity_id
+           JOIN t_relation r ON rp.fk_relation_id = r.relation_id
+           WHERE r.name = ? AND e.entity_id = ?
+             AND rp.fk_att_id != rp.fk_att_id_rel
+           LIMIT 1""",
+        (rel_name, entity_id),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['card_max'] if row else None
+
+
+def get_entity_type_attributes_list(entity_id: int):
     """Get non-PK attributes of an entity type."""
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
@@ -866,10 +1235,34 @@ def get_entity_type_attributes_list(entity_type: str):
         """SELECT a.attribute_name, d.datatype
            FROM t_attribute a
            JOIN t_datatype d ON a.fk_datatype_id = d.datatype_id
-           JOIN t_entity e ON a.fk_entity_id = e.entity_id
-           WHERE e.entity_type = ? AND a.is_unique = FALSE
+           WHERE a.fk_entity_id = ? AND a.is_unique = FALSE
            ORDER BY a.attribute_id""",
-        (entity_type,),
+        (entity_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_relation_attributes_for_entity(entity_id: int, event_instance_id: int):
+    """Get local (relation) attributes for an entity type within a specific event."""
+    conn = get_connection()
+    entity_type = _get_entity_type_by_id(conn, entity_id)
+    event_et = _get_event_entity_type(conn, event_instance_id)
+    rel_name = _make_rel_name(event_et, entity_type) if event_et else f"event_{entity_type.lower()}"
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT a.attribute_name, d.datatype
+           FROM t_relation_participant rp
+           JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
+           JOIN t_datatype d ON a.fk_datatype_id = d.datatype_id
+           JOIN t_relation r ON rp.fk_relation_id = r.relation_id
+           WHERE r.name = ?
+             AND a.fk_entity_id IS NULL
+             AND a.attribute_name NOT LIKE 'fk!_%' ESCAPE '!'
+             AND rp.fk_att_id = rp.fk_att_id_rel
+           ORDER BY a.attribute_id""",
+        (rel_name,),
     )
     rows = cur.fetchall()
     conn.close()
@@ -943,15 +1336,13 @@ def get_event_tree_data(event_instance_id: int):
                 continue
             seen.add(etype)
 
-            # Entity attributes (non-PK)
+            # Entity attributes — only PK remains on the entity now, skip non-PK entity attrs
+            # Check if entity has persons flag via entity attributes
             cur2 = conn.cursor(dictionary=True)
             cur2.execute(
-                """SELECT a.attribute_name, d.datatype, a.isInputField, a.isRequired,
-                          a.isListRessource, a.isSingularRessource, a.isPersonRessource
+                """SELECT a.isPersonRessource
                    FROM t_attribute a
-                   JOIN t_datatype d ON a.fk_datatype_id = d.datatype_id
-                   WHERE a.fk_entity_id = ? AND a.is_unique = FALSE
-                   ORDER BY a.attribute_id""",
+                   WHERE a.fk_entity_id = ? AND a.is_unique = FALSE""",
                 (et['entity_id'],),
             )
             e_attrs = [dict(r) for r in cur2.fetchall()]
@@ -978,15 +1369,6 @@ def get_event_tree_data(event_instance_id: int):
             cur3.close()
 
             attributes = []
-            for a in e_attrs:
-                attributes.append({
-                    "name": a['attribute_name'], "datatype": a['datatype'],
-                    "isInputField": bool(a['isInputField']),
-                    "isListRessource": bool(a.get('isListRessource', False)),
-                    "isSingularRessource": bool(a.get('isSingularRessource', False)),
-                    "isPersonRessource": bool(a.get('isPersonRessource', False)),
-                    "source": "entity",
-                })
             for a in r_attrs:
                 attr_dict = {
                     "name": a['attribute_name'], "datatype": a['datatype'],
@@ -998,6 +1380,13 @@ def get_event_tree_data(event_instance_id: int):
                 if a.get('ref_entity_type'):
                     attr_dict["ref_entity_type"] = a['ref_entity_type']
                     attr_dict["ref_attribute_name"] = a['ref_attribute_name']
+                    # Resolve ref_entity_id for frontend
+                    cur_ref = conn.cursor(dictionary=True)
+                    cur_ref.execute("SELECT entity_id FROM t_entity WHERE entity_type = ?", (a['ref_entity_type'],))
+                    ref_row = cur_ref.fetchone()
+                    cur_ref.close()
+                    if ref_row:
+                        attr_dict["ref_entity_id"] = ref_row['entity_id']
                 attributes.append(attr_dict)
 
             # Get resource instance IDs linked to this event via this relation
@@ -1032,21 +1421,7 @@ def get_event_tree_data(event_instance_id: int):
 
             instances = []
             for iid in iids:
-                # Entity attribute values
-                cur5 = conn.cursor(dictionary=True)
-                cur5.execute(
-                    """SELECT a.attribute_name, v.value
-                       FROM t_values v
-                       JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-                       WHERE v.entity_instance_id = ?
-                         AND a.fk_entity_id = ?
-                         AND a.is_unique = FALSE""",
-                    (iid, et['entity_id']),
-                )
                 vals = {"_id": iid, "_rel_instance_id": iid_to_riid.get(iid)}
-                for r in cur5.fetchall():
-                    vals[r['attribute_name']] = r['value']
-                cur5.close()
 
                 # Relation attribute values for this instance
                 cur6 = conn.cursor(dictionary=True)
@@ -1076,13 +1451,34 @@ def get_event_tree_data(event_instance_id: int):
 
                 instances.append(vals)
 
-            resources.append({
+            # Get cardinality for the FK participant of this entity type
+            cur_card = conn.cursor(dictionary=True)
+            cur_card.execute(
+                """SELECT rp.participant_id, rp.card_min, rp.card_max
+                   FROM t_relation_participant rp
+                   JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
+                   JOIN t_entity e ON a.fk_entity_id = e.entity_id
+                   WHERE rp.fk_relation_id = ? AND e.entity_type = ?
+                     AND rp.fk_att_id != rp.fk_att_id_rel
+                   LIMIT 1""",
+                (rid, etype),
+            )
+            card_row = cur_card.fetchone()
+            cur_card.close()
+
+            res_entry = {
                 "entity_type": etype,
+                "entity_id": et['entity_id'],
                 "relation_id": rid,
                 "attributes": attributes,
                 "instances": instances,
                 "hasPersons": has_persons,
-            })
+            }
+            if card_row:
+                res_entry["participantId"] = card_row['participant_id']
+                res_entry["cardMin"] = card_row['card_min']
+                res_entry["cardMax"] = card_row['card_max']
+            resources.append(res_entry)
 
     conn.close()
     return resources
@@ -1150,37 +1546,30 @@ def get_unlinked_entity_types(event_instance_id: int):
 
     # Get all non-event entity types
     cur2 = conn.cursor(dictionary=True)
-    cur2.execute("SELECT entity_type FROM t_entity WHERE isEvent = FALSE")
-    all_types = [r['entity_type'] for r in cur2.fetchall()]
+    cur2.execute("SELECT entity_id, entity_type FROM t_entity WHERE isEvent = FALSE")
+    all_types = cur2.fetchall()
     cur2.close()
 
     conn.close()
-    return sorted([t for t in all_types if t not in linked])
+    return sorted(
+        [{"entity_type": r['entity_type'], "entity_id": r['entity_id']} for r in all_types if r['entity_type'] not in linked],
+        key=lambda x: x['entity_type']
+    )
 
 
-def link_existing_entity_to_event(entity_type: str, event_instance_id: int):
+def link_existing_entity_to_event(entity_id: int, event_instance_id: int):
     """Link an already-existing entity type to an event via a new relation."""
     conn = get_connection()
 
     try:
+        entity_type = _get_entity_type_by_id(conn, entity_id)
         # Look up event entity type
-        cur0 = conn.cursor(dictionary=True)
-        cur0.execute(
-            """SELECT e.entity_type FROM t_values v
-               JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-               JOIN t_entity e ON a.fk_entity_id = e.entity_id
-               WHERE v.entity_instance_id = ? AND e.isEvent = TRUE
-               LIMIT 1""",
-            (event_instance_id,),
-        )
-        ev_row = cur0.fetchone()
-        cur0.close()
-        if not ev_row:
+        event_entity_type = _get_event_entity_type(conn, event_instance_id)
+        if not event_entity_type:
             raise ValueError("Event not found")
-        event_entity_type = ev_row['entity_type']
 
         # Create / get relation
-        rel_name = f"event_{entity_type.lower()}"
+        rel_name = _make_rel_name(event_entity_type, entity_type)
         cur1 = conn.cursor(dictionary=True)
         cur1.execute(
             "CALL create_relation(?, ?, ?, @rel_id)",
@@ -1217,9 +1606,8 @@ def link_existing_entity_to_event(entity_type: str, event_instance_id: int):
             cur3.execute(
                 """SELECT v.value_id FROM t_values v
                    JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id
-                   JOIN t_entity e ON a.fk_entity_id = e.entity_id
-                   WHERE e.entity_type = ? AND a.is_unique = TRUE""",
-                (entity_type,),
+                   WHERE a.fk_entity_id = ? AND a.is_unique = TRUE""",
+                (entity_id,),
             )
             res_pks = cur3.fetchall()
             cur3.close()

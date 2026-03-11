@@ -12,7 +12,14 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      delete_resource as svc_delete_resource,
                                      rename_attribute as svc_rename_attribute,
                                      delete_attribute_from_resource as svc_delete_attribute,
-                                     delete_list_entry as svc_delete_list_entry)
+                                     delete_list_entry as svc_delete_list_entry,
+                                     add_entity_attribute as svc_add_entity_attribute,
+                                     get_relation_attrs as svc_get_relation_attrs,
+                                     add_local_attribute as svc_add_local_attribute,
+                                     update_cardinality as svc_update_cardinality,
+                                     get_users as svc_get_users,
+                                     get_user_classes as svc_get_user_classes,
+                                     add_persons_from_users as svc_add_persons_from_users)
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -126,11 +133,12 @@ def api_delete_event():
 def api_create_resource():
     data = request.get_json()
     resource_name = data.get('resourceName')
-    groups = data.get('groups', [])
+    user_ids = data.get('userIds', [])
+    class_groups = data.get('classGroups', [])
     event_id = data.get('eventInstanceId')
     if not resource_name or not event_id:
         return jsonify({"error": "Missing resourceName or eventInstanceId"}), 400
-    result = svc_create_resource(resource_name, groups, event_id)
+    result = svc_create_resource(resource_name, user_ids, class_groups, event_id)
     return jsonify(result), 200
 
 
@@ -164,20 +172,20 @@ def api_get_entity_types():
     return jsonify(types), 200
 
 
-@app.route('/api/entity-attributes/<entity_type>', methods=['GET'])
-def api_get_entity_attributes(entity_type):
-    attrs = get_entity_attrs(entity_type)
+@app.route('/api/entity-attributes/<int:entity_id>', methods=['GET'])
+def api_get_entity_attributes(entity_id):
+    attrs = get_entity_attrs(entity_id)
     return jsonify(attrs), 200
 
 
 @app.route('/api/resources/link', methods=['POST'])
 def api_link_entity():
     data = request.get_json()
-    entity_type = data.get('entityType')
+    entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
-    if not entity_type or not event_id:
-        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
-    result = link_entity_to_event(entity_type, event_id)
+    if not entity_id or not event_id:
+        return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
+    result = link_entity_to_event(entity_id, event_id)
     return jsonify(result), 200
 
 
@@ -193,13 +201,18 @@ def api_get_unlinked_entities():
 @app.route('/api/list-entry', methods=['POST'])
 def api_add_list_entry():
     data = request.get_json()
-    entity_type = data.get('entityType')
+    entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
     values = data.get('values', {})
-    if not entity_type or not event_id:
-        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
-    result = svc_add_list_entry(entity_type, event_id, values)
-    return jsonify(result), 200
+    if not entity_id or not event_id:
+        return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
+    try:
+        result = svc_add_list_entry(entity_id, event_id, values)
+        return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/update-instance-value', methods=['PUT'])
@@ -218,28 +231,28 @@ def api_update_instance_value():
     return jsonify(result), 200
 
 
-@app.route('/api/entity-instances/<entity_type>', methods=['GET'])
-def api_get_entity_instances(entity_type):
-    instances = svc_get_entity_instances(entity_type)
+@app.route('/api/entity-instances/<int:entity_id>', methods=['GET'])
+def api_get_entity_instances(entity_id):
+    instances = svc_get_entity_instances(entity_id)
     return jsonify(instances), 200
 
 
-@app.route('/api/reference-values/<entity_type>/<attribute_name>', methods=['GET'])
-def api_get_reference_values(entity_type, attribute_name):
+@app.route('/api/reference-values/<int:entity_id>/<attribute_name>', methods=['GET'])
+def api_get_reference_values(entity_id, attribute_name):
     event_id = request.args.get('eventId', type=int)
-    values = svc_get_reference_values(entity_type, attribute_name, event_id)
+    values = svc_get_reference_values(entity_id, attribute_name, event_id)
     return jsonify(values), 200
 
 
 @app.route('/api/resources/rename', methods=['PUT'])
 def api_rename_resource():
     data = request.get_json()
-    old_name = data.get('oldName')
+    entity_id = data.get('entityId')
     new_name = data.get('newName')
-    if not old_name or not new_name:
-        return jsonify({"error": "Missing oldName or newName"}), 400
+    if not entity_id or not new_name:
+        return jsonify({"error": "Missing entityId or newName"}), 400
     try:
-        result = svc_rename_resource(old_name, new_name)
+        result = svc_rename_resource(entity_id, new_name)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -248,12 +261,12 @@ def api_rename_resource():
 @app.route('/api/resources/delete', methods=['DELETE'])
 def api_delete_resource():
     data = request.get_json()
-    entity_type = data.get('entityType')
+    entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
-    if not entity_type or not event_id:
-        return jsonify({"error": "Missing entityType or eventInstanceId"}), 400
+    if not entity_id or not event_id:
+        return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
     try:
-        result = svc_delete_resource(entity_type, event_id)
+        result = svc_delete_resource(entity_id, event_id)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -262,7 +275,7 @@ def api_delete_resource():
 @app.route('/api/attributes/rename', methods=['PUT'])
 def api_rename_attribute():
     data = request.get_json()
-    entity_type = data.get('entityType')
+    entity_id = data.get('entityId')
     old_name = data.get('oldName')
     new_name = data.get('newName')
     source = data.get('source', 'entity')
@@ -270,7 +283,7 @@ def api_rename_attribute():
     if not old_name or not new_name:
         return jsonify({"error": "Missing oldName or newName"}), 400
     try:
-        result = svc_rename_attribute(entity_type, old_name, new_name, source, relation_id)
+        result = svc_rename_attribute(entity_id, old_name, new_name, source, relation_id)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -279,14 +292,17 @@ def api_rename_attribute():
 @app.route('/api/attributes/delete', methods=['DELETE'])
 def api_delete_attribute():
     data = request.get_json()
-    entity_type = data.get('entityType')
+    entity_id = data.get('entityId')
     attr_name = data.get('attributeName')
     source = data.get('source', 'entity')
     relation_id = data.get('relationId')
+    relation_name = data.get('relationName')
+    event_instance_id = data.get('eventInstanceId')
     if not attr_name:
         return jsonify({"error": "Missing attributeName"}), 400
     try:
-        result = svc_delete_attribute(entity_type, attr_name, source, relation_id)
+        result = svc_delete_attribute(entity_id, attr_name, source, relation_id,
+                                      relation_name, event_instance_id)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -301,6 +317,100 @@ def api_delete_list_entry():
         return jsonify({"error": "Missing instanceId"}), 400
     try:
         result = svc_delete_list_entry(instance_id, rel_instance_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/entity-attributes', methods=['POST'])
+def api_add_entity_attribute():
+    data = request.get_json()
+    entity_id = data.get('entityId')
+    attr_name = data.get('attributeName')
+    datatype = data.get('datatype', 'VARCHAR')
+    if not entity_id or not attr_name:
+        return jsonify({"error": "Missing entityId or attributeName"}), 400
+    try:
+        result = svc_add_entity_attribute(entity_id, attr_name, datatype)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/relation-attributes/<int:entity_id>', methods=['GET'])
+def api_get_relation_attributes(entity_id):
+    event_id = request.args.get('eventId', type=int)
+    if not event_id:
+        return jsonify([]), 200
+    attrs = svc_get_relation_attrs(entity_id, event_id)
+    return jsonify(attrs), 200
+
+
+@app.route('/api/relation-attributes', methods=['POST'])
+def api_add_relation_attribute():
+    data = request.get_json()
+    entity_id = data.get('entityId')
+    event_id = data.get('eventInstanceId')
+    attr_name = data.get('attributeName')
+    datatype = data.get('datatype', 'Text')
+    if not entity_id or not event_id or not attr_name:
+        return jsonify({"error": "Missing entityId, eventInstanceId or attributeName"}), 400
+    try:
+        result = svc_add_local_attribute(entity_id, event_id, attr_name, datatype)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/cardinality', methods=['PUT'])
+def api_update_cardinality():
+    data = request.get_json()
+    participant_id = data.get('participantId')
+    card_min = data.get('cardMin', 0)
+    card_max = data.get('cardMax')  # None = unlimited
+    if not participant_id:
+        return jsonify({"error": "Missing participantId"}), 400
+    if card_min is not None and card_min < 0:
+        return jsonify({"error": "cardMin must be >= 0"}), 400
+    if card_max is not None and card_max < card_min:
+        return jsonify({"error": "cardMax must be >= cardMin"}), 400
+    try:
+        result = svc_update_cardinality(participant_id, card_min, card_max)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/users', methods=['GET'])
+def api_get_users():
+    q = request.args.get('q', None)
+    try:
+        users = svc_get_users(q)
+        return jsonify(users), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/user-classes', methods=['GET'])
+def api_get_user_classes():
+    try:
+        classes = svc_get_user_classes()
+        return jsonify(classes), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/add-persons', methods=['POST'])
+def api_add_persons():
+    data = request.get_json()
+    entity_id = data.get('entityId')
+    event_instance_id = data.get('eventInstanceId')
+    filter_class = data.get('filterClass')
+    filter_name = data.get('filterName')
+    if not entity_id or not event_instance_id:
+        return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
+    try:
+        result = svc_add_persons_from_users(entity_id, event_instance_id, filter_class, filter_name)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
