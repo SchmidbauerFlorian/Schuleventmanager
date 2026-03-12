@@ -701,6 +701,11 @@ def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
             return rel_id
         attr_id = attr_row['attribute_id']
 
+        # Mark as person resource attribute
+        cur3b = conn.cursor()
+        cur3b.execute("UPDATE t_attribute SET isPersonRessource = TRUE WHERE attribute_id = ?", (attr_id,))
+        cur3b.close()
+
         # Get all relation instances (entity_instance_id + relation_instance_id)
         cur4 = conn.cursor(dictionary=True)
         cur4.execute(
@@ -1346,7 +1351,7 @@ def get_event_tree_data(event_instance_id: int):
             cur2.execute(
                 """SELECT a.isPersonRessource
                    FROM t_attribute a
-                   WHERE a.fk_entity_id = ? AND a.is_unique = FALSE""",
+                   WHERE a.fk_entity_id = ?""",
                 (et['entity_id'],),
             )
             e_attrs = [dict(r) for r in cur2.fetchall()]
@@ -1359,6 +1364,7 @@ def get_event_tree_data(event_instance_id: int):
                 """SELECT DISTINCT a.attribute_name, d.datatype,
                            a.isInputField, a.isRequired, a.access, a.expirationDate,
                            a.isListRessource, a.isSingularRessource,
+                           a.isPersonRessource,
                            a.ref_entity_type, a.ref_attribute_name
                     FROM t_relation_participant rp
                     JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
@@ -1379,6 +1385,7 @@ def get_event_tree_data(event_instance_id: int):
                     "isInputField": bool(a['isInputField']),
                     "isListRessource": bool(a.get('isListRessource', False)),
                     "isSingularRessource": bool(a.get('isSingularRessource', False)),
+                    "isPersonRessource": bool(a.get('isPersonRessource', False)),
                     "access": a.get('access', 'read'),
                     "source": "relation",
                 }

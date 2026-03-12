@@ -1000,16 +1000,6 @@ function renderTreeView(resources, unlinkedEntities = []) {
     nameBtn.className = "button-dark tree-resource-name";
     if (resource.hasPersons) {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
-      const addPersonBtn = document.createElement('img');
-      addPersonBtn.src = '/static/assets/images/users.svg';
-      addPersonBtn.alt = 'Add Persons';
-      addPersonBtn.className = 'tree-add-entry';
-      addPersonBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        openPersonSelector(resource, block);
-      });
-      nameBtn.appendChild(addPersonBtn);
     } else if (attrs.length > 0) {
       nameBtn.innerHTML = `<p>${resource.entity_type}</p>`;
       const plusBtn = document.createElement('img');
@@ -1035,7 +1025,6 @@ function renderTreeView(resources, unlinkedEntities = []) {
     attrs.forEach((attr) => {
       const header = document.createElement("div");
       header.className = "button-light tree-attr-header";
-      header.style.cursor = 'pointer';
       let attrIcon;
       if (attr.isInputField) {
         attrIcon = '/static/assets/images/tv_input.svg';
@@ -1045,10 +1034,13 @@ function renderTreeView(resources, unlinkedEntities = []) {
         attrIcon = '/static/assets/images/tv_ressource.svg';
       }
       header.innerHTML = `<p>${attr.name}</p><img src="${attrIcon}" alt="Type">`;
-      header.addEventListener('click', (e) => {
-        e.stopPropagation();
-        enterAttributeEditMode(attr, resource);
-      });
+      if (!attr.isPersonRessource) {
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          enterAttributeEditMode(attr, resource);
+        });
+      }
       headerRow.appendChild(header);
     });
     block.appendChild(headerRow);
@@ -1206,6 +1198,8 @@ function renderTreeView(resources, unlinkedEntities = []) {
               console.error('Dropdown Fehler:', err);
             }
           });
+        } else if (attr.isPersonRessource || (resource.hasPersons && !attr.isInputField && !attr.isSingularRessource)) {
+          cell.innerHTML = `<p>${displayVal}</p>`;
         } else {
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/tv_input.svg" alt="Edit" class="tree-cell-icon">`;
           cell.querySelector('.tree-cell-icon').addEventListener('click', (e) => {
@@ -1323,22 +1317,24 @@ function enterResourceEditMode(resource) {
   attrSection.style.display = 'none';
 
   // Fill resource form
-  document.getElementById('ressourceName').value = resource.entity_type;
+  const nameInput = document.getElementById('ressourceName');
+  nameInput.value = resource.entity_type;
 
-  // Hide person dropdown for non-person resources (lists)
+  // Person resources: name is read-only, no person dropdown in edit mode
   const personenDropdown = document.getElementById('personenDropdownBtn');
   const selectedGroupsDiv = document.getElementById('selectedGroups');
+  personenDropdown.style.display = 'none';
+  selectedGroupsDiv.style.display = 'none';
   if (resource.hasPersons) {
-    personenDropdown.style.display = '';
-    selectedGroupsDiv.style.display = '';
-  } else {
-    personenDropdown.style.display = 'none';
-    selectedGroupsDiv.style.display = 'none';
+    nameInput.readOnly = true;
+    nameInput.style.opacity = '0.6';
   }
 
   // Show edit buttons, hide create button
   document.getElementById('ressourceCreateButtons').style.display = 'none';
   document.getElementById('ressourceEditButtons').style.display = 'flex';
+  // Hide update button for person resources (read-only from t_users)
+  document.getElementById('btnUpdateRessource').style.display = resource.hasPersons ? 'none' : '';
 
   // Show/hide cardinality section
   const cardSection = document.getElementById('ressourceCardinalitySection');
@@ -1458,6 +1454,14 @@ function exitEditMode() {
   // Restore person dropdown visibility
   document.getElementById('personenDropdownBtn').style.display = '';
   document.getElementById('selectedGroups').style.display = '';
+
+  // Restore resource name editability
+  const nameInput = document.getElementById('ressourceName');
+  nameInput.readOnly = false;
+  nameInput.style.opacity = '';
+
+  // Restore update resource button
+  document.getElementById('btnUpdateRessource').style.display = '';
 
   // Hide cardinality section
   document.getElementById('ressourceCardinalitySection').style.display = 'none';
