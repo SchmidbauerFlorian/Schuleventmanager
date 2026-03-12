@@ -58,8 +58,7 @@ CREATE TABLE t_attribute (
     fk_datatype_id INTEGER NOT NULL COMMENT 'Foreign key referencing datatype',
     attribute_name VARCHAR(255) NOT NULL COMMENT 'Name of the attribute',
     is_unique BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Indicates if this attribute is a unique identifier (PK)',
-    access ENUM('read_public', 'write_public', 'teachers_only', 'owner_only') NOT NULL DEFAULT 'write_public' COMMENT 'Access level for this attribute',
-    isPrivate BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, attribute is hidden from public views',
+    access ENUM('hidden', 'read', 'write') NOT NULL DEFAULT 'read' COMMENT 'Access level for this attribute (hidden/read/write)',
     expirationDate DATE DEFAULT NULL COMMENT 'When elapsed, access automatically shifts to read',
     isRequired BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this attribute must be provided on instance creation',
     isInputField BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'If true, this is a relation input field (read/write + expirationDate)',
@@ -564,17 +563,24 @@ CREATE OR REPLACE PROCEDURE add_relation_attribute(
     IN p_isSingularRessource  BOOLEAN,
     IN p_expirationDate       DATE,
     IN p_ref_entity_type      VARCHAR(255),
-    IN p_ref_attribute_name   VARCHAR(255)
+    IN p_ref_attribute_name   VARCHAR(255),
+    IN p_access               VARCHAR(20)
 )
 BEGIN
     DECLARE v_datatype_id INT;
     DECLARE v_attr_id INT;
-    DECLARE v_access ENUM('read_public', 'write_public', 'teachers_only', 'owner_only');
+    DECLARE v_access ENUM('hidden', 'read', 'write');
 
     SELECT datatype_id INTO v_datatype_id FROM t_datatype WHERE datatype = p_datatype;
 
-    -- InputFields get write_public access; otherwise default read_public
-    SET v_access = IF(IFNULL(p_isInputField, FALSE), 'write_public', 'read_public');
+    -- Use explicit access if provided, otherwise default based on isInputField
+    IF p_access IS NOT NULL AND p_access IN ('hidden', 'read', 'write') THEN
+        SET v_access = p_access;
+    ELSEIF IFNULL(p_isInputField, FALSE) THEN
+        SET v_access = 'write';
+    ELSE
+        SET v_access = 'read';
+    END IF;
 
     INSERT INTO t_attribute(
         fk_entity_id, fk_datatype_id, attribute_name, is_unique,
@@ -1175,10 +1181,10 @@ CREATE EVENT evt_expire_attribute_access
     STARTS CURRENT_DATE + INTERVAL 0 SECOND
     DO
         UPDATE t_attribute
-        SET access = 'read_public'
+        SET access = 'read'
         WHERE expirationDate IS NOT NULL
           AND expirationDate < CURDATE()
-          AND access != 'read_public';
+          AND access != 'read';
 
 -- ============================================================================
 -- PART 3: Data Population (Entities, Instances, Relations)

@@ -280,10 +280,11 @@ def api_rename_attribute():
     new_name = data.get('newName')
     source = data.get('source', 'entity')
     relation_id = data.get('relationId')
+    access = data.get('access')
     if not old_name or not new_name:
         return jsonify({"error": "Missing oldName or newName"}), 400
     try:
-        result = svc_rename_attribute(entity_id, old_name, new_name, source, relation_id)
+        result = svc_rename_attribute(entity_id, old_name, new_name, source, relation_id, access)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400

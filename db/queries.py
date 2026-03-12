@@ -306,8 +306,9 @@ def delete_relation_attribute(relation_id: int, attribute_name: str):
         conn.close()
 
 
-def update_relation_attribute_name(relation_id: int, old_name: str, new_name: str):
-    """Rename a relation attribute."""
+def update_relation_attribute_name(relation_id: int, old_name: str, new_name: str,
+                                   access: str = None):
+    """Rename a relation attribute and optionally update access."""
     conn = get_connection()
     try:
         cur = conn.cursor(dictionary=True)
@@ -322,8 +323,12 @@ def update_relation_attribute_name(relation_id: int, old_name: str, new_name: st
         cur.close()
         if row:
             cur2 = conn.cursor()
-            cur2.execute("UPDATE t_attribute SET attribute_name = ? WHERE attribute_id = ?",
-                         (new_name, row['attribute_id']))
+            if access and access in ('hidden', 'read', 'write'):
+                cur2.execute("UPDATE t_attribute SET attribute_name = ?, access = ? WHERE attribute_id = ?",
+                             (new_name, access, row['attribute_id']))
+            else:
+                cur2.execute("UPDATE t_attribute SET attribute_name = ? WHERE attribute_id = ?",
+                             (new_name, row['attribute_id']))
             cur2.close()
         conn.commit()
     except Exception as e:
@@ -331,9 +336,6 @@ def update_relation_attribute_name(relation_id: int, old_name: str, new_name: st
         raise e
     finally:
         conn.close()
-    affected = cur.rowcount
-    conn.close()
-    return affected
 
 def create_entity_instance(entity_type: str, attribute_names: str, values: str):
     conn = get_connection()
@@ -650,7 +652,8 @@ def add_list_entry(entity_id: int, event_instance_id: int, values: dict) -> int:
 
 def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
                                    event_instance_id: int,
-                                   datatype: str = 'VARCHAR', is_required: bool = False):
+                                   datatype: str = 'VARCHAR', is_required: bool = False,
+                                   access: str = 'read'):
     """Add an API attribute as a relation attribute and populate values from t_users."""
     field_map = {"Name": "display_name", "Email": "email", "Klasse": "job_title"}
     t_users_col = field_map.get(attribute_name)
@@ -676,8 +679,8 @@ def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
         # Create relation attribute (like Eingabe does)
         cur2 = conn.cursor(dictionary=True)
         cur2.execute(
-            "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (rel_id, attribute_name, datatype, False, is_required, False, None, None, None),
+            "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (rel_id, attribute_name, datatype, False, is_required, False, None, None, None, access),
         )
         _drain(cur2)
         cur2.close()
@@ -856,9 +859,9 @@ def add_dependent_resource_attribute(target_entity_id: int, event_instance_id: i
 
     cur2 = conn.cursor(dictionary=True)
     cur2.execute(
-        "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (rel_row['relation_id'], source_attribute, db_dtype, False, False, True,
-         None, source_entity, source_attribute),
+         None, source_entity, source_attribute, 'read'),
     )
     try:
         while cur2.nextset():
@@ -911,7 +914,8 @@ def get_reference_values(entity_id: int, attribute_name: str, event_instance_id:
 
 def add_input_attribute_to_event_relation(entity_id: int, event_instance_id: int,
                                           attr_name: str, datatype: str,
-                                          is_required: bool, expiration_date: str):
+                                          is_required: bool, expiration_date: str,
+                                          access: str = 'read'):
     """Add an input field attribute to the relation between event and entity type."""
     conn = get_connection()
     cur1 = conn.cursor(dictionary=True)
@@ -931,9 +935,9 @@ def add_input_attribute_to_event_relation(entity_id: int, event_instance_id: int
 
     cur2 = conn.cursor(dictionary=True)
     cur2.execute(
-        "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL add_relation_attribute(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (rel_row['relation_id'], attr_name, db_dtype, True, is_required, False,
-         expiration_date if expiration_date else None, None, None),
+         expiration_date if expiration_date else None, None, None, access),
     )
     try:
         while cur2.nextset():
@@ -1375,6 +1379,7 @@ def get_event_tree_data(event_instance_id: int):
                     "isInputField": bool(a['isInputField']),
                     "isListRessource": bool(a.get('isListRessource', False)),
                     "isSingularRessource": bool(a.get('isSingularRessource', False)),
+                    "access": a.get('access', 'read'),
                     "source": "relation",
                 }
                 if a.get('ref_entity_type'):

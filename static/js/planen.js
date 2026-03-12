@@ -393,7 +393,22 @@ subDropdowns.forEach(sd => {
     if (!item) return;
     textEl.textContent = item.querySelector("p").textContent;
     if (item.dataset.entityId) textEl.dataset.entityId = item.dataset.entityId;
+    if (item.dataset.access) textEl.dataset.access = item.dataset.access;
+    if (item.dataset.hasPersons) textEl.dataset.hasPersons = item.dataset.hasPersons;
     dropdown.style.display = "none";
+
+    // Eingabe: when target resource changes, toggle Schreiben option
+    if (sd.text === "eingabeHinzufuegenSelectedText") {
+      const isPersonRes = item.dataset.hasPersons === "true";
+      const writeItem = document.querySelector('#eingabeBerechtigungDropdown .dropdown-item[data-access="write"]');
+      if (writeItem) writeItem.style.display = isPersonRes ? '' : 'none';
+      // Reset Berechtigung if Schreiben was selected for non-person
+      const berText = document.getElementById('eingabeBerechtigungSelectedText');
+      if (!isPersonRes && berText.dataset.access === 'write') {
+        berText.textContent = 'Berechtigung';
+        delete berText.dataset.access;
+      }
+    }
   });
 });
 
@@ -510,7 +525,7 @@ btnCreateAttribut.addEventListener("click", async (e) => {
       showMessageBox("Fehler: Bitte API-Endpunkt wählen (Name, Email oder Klasse)!");
       return;
     }
-    payload.permission = document.getElementById("apiBerechtigungSelectedText").textContent;
+    payload.permission = document.getElementById("apiBerechtigungSelectedText").dataset.access || 'read';
     payload.entityId = parseInt(document.getElementById("apiHinzufuegenSelectedText").dataset.entityId);
     if (!payload.entityId) {
       showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
@@ -530,7 +545,7 @@ btnCreateAttribut.addEventListener("click", async (e) => {
       showMessageBox("Fehler: Attributname darf nicht leer sein!");
       return;
     }
-    payload.permission = document.getElementById("eingabeBerechtigungSelectedText").textContent;
+    payload.permission = document.getElementById("eingabeBerechtigungSelectedText").dataset.access || 'read';
     payload.datatype = document.getElementById("eingabeFormatSelectedText").textContent;
     if (payload.datatype === "Formatvorgabe") {
       showMessageBox("Fehler: Bitte Formatvorgabe wählen (Text, Zahl oder Datum)!");
@@ -1244,6 +1259,7 @@ async function refreshDropdowns() {
         const item = document.createElement("div");
         item.className = "dropdown-item clickable";
         item.dataset.entityId = t.entity_id;
+        item.dataset.hasPersons = t.hasPersons ? "true" : "false";
         item.innerHTML = `<p>${t.name}</p>`;
         dd.appendChild(item);
       });
@@ -1361,10 +1377,14 @@ function enterAttributeEditMode(attr, resource) {
   document.getElementById('attributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = 'none';
 
   // Set the attribute type dropdown label
+  const accessLabelMap = { 'hidden': 'Versteckt', 'read': 'Lesen', 'write': 'Schreiben' };
   if (attr.isPersonRessource) {
     document.getElementById('attributSelectedText').textContent = 'API-Endpunkt';
     attributFieldsApi.style.display = 'flex';
     document.getElementById('apiEmailSelectedText').textContent = attr.name;
+    const apiBer = document.getElementById('apiBerechtigungSelectedText');
+    apiBer.textContent = accessLabelMap[attr.access] || 'Berechtigung';
+    apiBer.dataset.access = attr.access || 'read';
     document.getElementById('apiHinzufuegenDropdownBtn').style.display = 'none';
   } else if (attr.isSingularRessource) {
     document.getElementById('attributSelectedText').textContent = 'Abhängige Ressource';
@@ -1387,6 +1407,12 @@ function enterAttributeEditMode(attr, resource) {
     // Map datatype to display
     const dtMap = { 'VARCHAR': 'Text', 'INTEGER': 'Zahl', 'DATE': 'Datum' };
     document.getElementById('eingabeFormatSelectedText').textContent = dtMap[attr.datatype] || attr.datatype;
+    const eingBer = document.getElementById('eingabeBerechtigungSelectedText');
+    eingBer.textContent = accessLabelMap[attr.access] || 'Berechtigung';
+    eingBer.dataset.access = attr.access || 'read';
+    // Toggle Schreiben visibility based on resource type
+    const writeItem = document.querySelector('#eingabeBerechtigungDropdown .dropdown-item[data-access="write"]');
+    if (writeItem) writeItem.style.display = resource.hasPersons ? '' : 'none';
     document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = 'none';
   }
 
@@ -1418,6 +1444,16 @@ function exitEditMode() {
   document.getElementById('apiHinzufuegenDropdownBtn').style.display = '';
   document.getElementById('resHinzufuegenDropdownBtn').style.display = '';
   document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = '';
+
+  // Reset Berechtigung dropdowns
+  const apiBer = document.getElementById('apiBerechtigungSelectedText');
+  apiBer.textContent = 'Berechtigung';
+  delete apiBer.dataset.access;
+  const eingBer = document.getElementById('eingabeBerechtigungSelectedText');
+  eingBer.textContent = 'Berechtigung';
+  delete eingBer.dataset.access;
+  // Restore all Berechtigung options visibility
+  document.querySelectorAll('#eingabeBerechtigungDropdown .dropdown-item').forEach(i => i.style.display = '');
 
   // Restore person dropdown visibility
   document.getElementById('personenDropdownBtn').style.display = '';
@@ -1567,6 +1603,13 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
   if (!editingAttribute) return;
 
   let newName = editingAttribute.name;
+  let newAccess = null;
+
+  // For API endpoint attributes, get access from api Berechtigung
+  if (editingAttribute.isPersonRessource) {
+    newAccess = document.getElementById('apiBerechtigungSelectedText').dataset.access || null;
+  }
+
   // For input attributes, get new name from the input field
   if (editingAttribute.isInputField || (!editingAttribute.isPersonRessource && !editingAttribute.isSingularRessource)) {
     newName = document.getElementById('eingabeAttributName').value.trim();
@@ -1574,10 +1617,11 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
       showMessageBox('Fehler: Attributname darf nicht leer sein!');
       return;
     }
+    newAccess = document.getElementById('eingabeBerechtigungSelectedText').dataset.access || null;
   }
 
   try {
-    if (newName !== editingAttribute.name) {
+    if (newName !== editingAttribute.name || (newAccess && newAccess !== editingAttribute.access)) {
       const response = await fetch('/api/attributes/rename', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1587,6 +1631,7 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
           newName,
           source: editingAttribute.source || 'relation',
           relationId: editingAttribute.relation_id,
+          access: newAccess,
         }),
       });
       if (!response.ok) {

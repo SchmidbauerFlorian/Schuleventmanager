@@ -133,7 +133,8 @@ def create_resource(resource_name: str, user_ids: list, class_groups: list, even
 def create_event_attribute(attr_type: str, data: dict, event_instance_id: int) -> dict:
     if attr_type == "api":
         queries.add_api_attribute_to_resource(
-            data.get('entityId'), data.get('field'), event_instance_id)
+            data.get('entityId'), data.get('field'), event_instance_id,
+            access=data.get('permission', 'read'))
         return {"status": "ok"}
     elif attr_type == "ressource":
         rel_id = queries.add_dependent_resource_attribute(
@@ -144,7 +145,8 @@ def create_event_attribute(attr_type: str, data: dict, event_instance_id: int) -
         rel_id = queries.add_input_attribute_to_event_relation(
             data.get('entityId'), event_instance_id,
             data.get('attributeName'), data.get('datatype', 'Text'),
-            data.get('isRequired', False), data.get('expirationDate'))
+            data.get('isRequired', False), data.get('expirationDate'),
+            access=data.get('permission', 'read'))
         return {"status": "ok", "relation_id": rel_id}
     return {"status": "error", "message": "Unknown type"}
 
@@ -217,9 +219,10 @@ def delete_resource(entity_id: int, event_instance_id: int) -> dict:
 
 
 def rename_attribute(entity_id: int, old_name: str, new_name: str,
-                     source: str = 'entity', relation_id: int = None) -> dict:
+                     source: str = 'entity', relation_id: int = None,
+                     access: str = None) -> dict:
     if source == 'relation' and relation_id:
-        queries.update_relation_attribute_name(relation_id, old_name, new_name)
+        queries.update_relation_attribute_name(relation_id, old_name, new_name, access)
     else:
         # For entity attributes, keep the same datatype
         attrs = queries.get_entity_type_attributes_list(entity_id)
