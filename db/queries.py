@@ -1655,3 +1655,85 @@ def link_existing_entity_to_event(entity_id: int, event_instance_id: int):
         raise e
     finally:
         conn.close()
+
+
+# =========================================================================
+# Participant View (Teilnehmen)
+# =========================================================================
+
+def get_user_id_by_email(email: str):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT user_id FROM t_users WHERE LOWER(email) = LOWER(?)", (email,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['user_id'] if row else None
+
+
+def get_events_for_participant(user_id: int):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        "SELECT DISTINCT ev_val.entity_instance_id AS event_instance_id"
+        " FROM t_values person_pk_val"
+        " JOIN t_attribute a_pk ON person_pk_val.fk_attribute_id = a_pk.attribute_id"
+        " JOIN t_entity ent ON a_pk.fk_entity_id = ent.entity_id"
+        " JOIN t_relation_values rv_person ON rv_person.fk_value_id = person_pk_val.value_id"
+        " JOIN t_relation_values rv_event"
+        "   ON rv_event.relation_instance_id = rv_person.relation_instance_id"
+        "   AND rv_event.fk_relation_id = rv_person.fk_relation_id"
+        "   AND rv_event.fk_value_id != rv_person.fk_value_id"
+        " JOIN t_values ev_val ON rv_event.fk_value_id = ev_val.value_id"
+        " JOIN t_attribute a_ev ON ev_val.fk_attribute_id = a_ev.attribute_id"
+        " JOIN t_entity ev_ent ON a_ev.fk_entity_id = ev_ent.entity_id"
+        " WHERE ev_ent.isEvent = TRUE"
+        "   AND a_pk.is_unique = TRUE"
+        "   AND a_pk.isPersonRessource = TRUE"
+        "   AND ent.isEvent = FALSE"
+        "   AND person_pk_val.value = ?",
+        (str(user_id),),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [r['event_instance_id'] for r in rows]
+
+
+def _find_user_entity_instance_id(entity_id: int, user_id: int):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        "SELECT v.entity_instance_id"
+        " FROM t_values v"
+        " JOIN t_attribute a ON v.fk_attribute_id = a.attribute_id"
+        " WHERE a.fk_entity_id = ? AND a.is_unique = TRUE AND v.value = ?"
+        " LIMIT 1",
+        (entity_id, str(user_id)),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row['entity_instance_id'] if row else None
+
+
+def get_participant_tree_data(event_instance_id: int, user_id: int):
+    full_tree = get_event_tree_data(event_instance_id)
+    result = []
+    for resource in full_tree:
+        visible_attrs = [a for a in resource['attributes'] if a.get('access', 'read') != 'hidden']
+        if not visible_attrs:
+            continue
+        if resource['hasPersons']:
+            user_iid = _find_user_entity_instance_id(resource['entity_id'], user_id)
+            if user_iid is None:
+                continue
+            matching = [i for i in resource['instances'] if i['_id'] == user_iid]
+            if not matching:
+                continue
+            attrs_for_person = [{**a, 'userCanEdit': a.get('access', 'read') == 'write'} for a in visible_attrs]
+            result.append({**resource, 'attributes': attrs_for_person, 'instances': matching})
+        else:
+            attrs_readonly = [{**a, 'userCanEdit': False} for a in visible_attrs]
+            result.append({**resource, 'attributes': attrs_readonly, 'instances': resource['instances']})
+    return result

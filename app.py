@@ -19,7 +19,9 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      update_cardinality as svc_update_cardinality,
                                      get_users as svc_get_users,
                                      get_user_classes as svc_get_user_classes,
-                                     add_persons_from_users as svc_add_persons_from_users)
+                                     add_persons_from_users as svc_add_persons_from_users,
+                                     get_my_events as svc_get_my_events,
+                                     get_participant_tree as svc_get_participant_tree)
 from services.permission_service import can_plan
 import os, msal, uuid, requests
 import config
@@ -415,6 +417,26 @@ def api_add_persons():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/my-events', methods=['GET'])
+def api_my_events():
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    email = user.get("mail") or user.get("userPrincipalName", "")
+    events = svc_get_my_events(email)
+    return jsonify(events), 200
+
+
+@app.route('/api/resources/<int:event_id>/participant-tree', methods=['GET'])
+def api_get_participant_tree(event_id):
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    email = user.get("mail") or user.get("userPrincipalName", "")
+    tree = svc_get_participant_tree(event_id, email)
+    return jsonify(tree), 200
 
 
 if __name__ == '__main__':

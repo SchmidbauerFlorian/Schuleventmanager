@@ -1034,13 +1034,11 @@ function renderTreeView(resources, unlinkedEntities = []) {
         attrIcon = '/static/assets/images/tv_ressource.svg';
       }
       header.innerHTML = `<p>${attr.name}</p><img src="${attrIcon}" alt="Type">`;
-      if (!attr.isPersonRessource) {
-        header.style.cursor = 'pointer';
-        header.addEventListener('click', (e) => {
-          e.stopPropagation();
-          enterAttributeEditMode(attr, resource);
-        });
-      }
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        enterAttributeEditMode(attr, resource);
+      });
       headerRow.appendChild(header);
     });
     block.appendChild(headerRow);
@@ -1410,6 +1408,11 @@ function enterAttributeEditMode(attr, resource) {
     const writeItem = document.querySelector('#eingabeBerechtigungDropdown .dropdown-item[data-access="write"]');
     if (writeItem) writeItem.style.display = resource.hasPersons ? '' : 'none';
     document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = 'none';
+    // Formatvorlage is fixed for existing attributes
+    const formatBtn = document.getElementById('eingabeFormatDropdownBtn');
+    formatBtn.style.pointerEvents = 'none';
+    const formatChevron = formatBtn.querySelector('img[alt="Chevron Icon"]');
+    if (formatChevron) formatChevron.style.display = 'none';
   }
 
   // Show edit buttons, hide create button
@@ -1480,6 +1483,12 @@ function exitEditMode() {
   document.getElementById('resRessourceDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = '';
   document.getElementById('resAttributDropdownBtn').style.pointerEvents = '';
   document.getElementById('resAttributDropdownBtn').querySelector('img[alt="Chevron Icon"]').style.display = '';
+
+  // Restore format dropdown interactivity (disabled only while editing existing input attributes)
+  const formatBtn = document.getElementById('eingabeFormatDropdownBtn');
+  formatBtn.style.pointerEvents = '';
+  const formatChevron = formatBtn.querySelector('img[alt="Chevron Icon"]');
+  if (formatChevron) formatChevron.style.display = '';
 
   // Hide cancel buttons
   document.getElementById('btnCancelRessource').style.display = 'none';
@@ -1614,7 +1623,7 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
     newAccess = document.getElementById('apiBerechtigungSelectedText').dataset.access || null;
   }
 
-  // For input attributes, get new name from the input field
+  // For input attributes, get new name from the form
   if (editingAttribute.isInputField || (!editingAttribute.isPersonRessource && !editingAttribute.isSingularRessource)) {
     newName = document.getElementById('eingabeAttributName').value.trim();
     if (!newName) {

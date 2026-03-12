@@ -571,6 +571,9 @@ footer{
     padding: calc(var(--space) * 2);
     */
 }
+.section-event-teilnehmen{
+    padding-bottom: calc(var(--space) * 8);
+}
 .expanded-container{
     /*
     width: calc(1366px - (var(--space) * 4 * 2));

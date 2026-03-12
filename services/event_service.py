@@ -291,3 +291,36 @@ def add_persons_from_users(entity_id: int, event_instance_id: int,
                            filter_class: str = None, filter_name: str = None) -> dict:
     queries.create_selected_from_users_table(filter_class, filter_name)
     return {"status": "ok"}
+
+
+# =========================================================================
+# Participant View (Teilnehmen)
+# =========================================================================
+
+def get_user_id_by_email(email: str):
+    return queries.get_user_id_by_email(email)
+
+
+def get_my_events(user_email: str) -> dict:
+    user_id = queries.get_user_id_by_email(user_email)
+    if user_id is None:
+        return {"current_event": None, "all_events": []}
+    event_ids = queries.get_events_for_participant(user_id)
+    if not event_ids:
+        return {"current_event": None, "all_events": []}
+    all_stats = queries.fetch_all_events()
+    my_stats = [r for r in all_stats if r['event_instance_id'] in set(event_ids)]
+    if not my_stats:
+        return {"current_event": None, "all_events": []}
+    all_events_list = [{"id": r['event_instance_id'], "name": r['event_name']} for r in my_stats]
+    first = my_stats[0]
+    attrs = queries.get_event_instance_attributes(first['event_instance_id'])
+    current_event = _format_current_event(first, attrs)
+    return {"current_event": current_event, "all_events": all_events_list}
+
+
+def get_participant_tree(event_instance_id: int, user_email: str) -> list:
+    user_id = queries.get_user_id_by_email(user_email)
+    if user_id is None:
+        return []
+    return queries.get_participant_tree_data(event_instance_id, user_id)

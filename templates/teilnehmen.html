@@ -225,53 +225,25 @@
         </div>
     </section>
     -->
-    <section class="section-event">
+    <section id="section-event" class="section-event section-event-teilnehmen">
         <div class="section-head">
             <div>
                 <img src="{{ url_for('static', filename='assets/images/ticket-event.svg') }}" alt="Event Icon">
-                <h3>Wintersportwoche</h3>
+                <h3 id="treeViewEventName">Event wählen</h3>
             </div>
-            <div>
-                <img src="{{ url_for('static', filename='assets/images/arrow-expand.svg') }}" alt="Arrow Expand Icon">
+            <div style="display:flex;gap:var(--space);align-items:center;">
+                <img id="btnScrollLeft" class="clickable" src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
+                <img id="btnScrollRight" class="clickable" src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">
             </div>
         </div>
-        <div class="section-body-event">
-            <div class="headline-grid">
+        <div id="section-body-event" class="section-body-event">
+            <div class="headline-grid" id="headlineGrid">
                 <p class="text-bold">Ressourcen</p>
                 <p id="attribute-headline" class="text-bold">Attribute</p>
-
-                <p>Ebene 0</p>
-                <p>Ebene 1</p>
-                <p>Ebene 2</p>
-                <p>Ebene 3</p>
-                <p>Ebene 4</p>
-                <p>Ebene 5</p>
-                <p>Ebene 6</p>
             </div>
             <div class="ressource-grid">
-                <div id="tv-line-1" class="line"></div>
-
-                <div id="r-student" class="ressource ressource-dark">
-                    <p>Schüler</p>
-                    <img src="{{ url_for('static', filename='assets/images/tv-ressource-person.svg') }}" alt="People Icon">
-                </div>
-                <div id="r-name" class="ressource">
-                    <p>Name</p>
-                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
-                </div>
-                <div id="r-mail" class="ressource">
-                    <p>Email</p>
-                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-api.svg') }}" alt="API Icon">
-                </div>
-                <div id="r-reason" class="ressource">
-                    <p>Grund</p>
-                    <img src="{{ url_for('static', filename='assets/images/tv-attribute-input.svg') }}" alt="Input Icon">
-                </div>
+                <!-- Participant tree view rendered here by JS -->
             </div>
-        </div>
-        <div class="section-footer">
-            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-left.svg') }}" alt="Arrow Left Icon">
-            <img class="clickable" src="{{ url_for('static', filename='assets/images/arrow-right.svg') }}" alt="Arrow Right Icon">    
         </div>
     </section>
 </main>
