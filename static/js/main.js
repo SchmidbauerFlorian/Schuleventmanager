@@ -19,6 +19,39 @@ function applyOverlayVisibility() {
     overlayContainer.style.pointerEvents = shouldHide ? "none" : "auto";
 }
 
+function initSectionScrollMotion() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const sections = Array.from(document.querySelectorAll("main section"));
+    if (!sections.length) return;
+
+    sections.forEach((section) => section.classList.add("section-reveal"));
+
+    if (typeof IntersectionObserver === "undefined") {
+        sections.forEach((section) => section.classList.add("in-view"));
+        return;
+    }
+
+    const observer = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((entry) => {
+                if (entry.intersectionRatio >= 0.18) {
+                    entry.target.classList.add("in-view");
+                } else if (entry.intersectionRatio <= 0.05) {
+                    entry.target.classList.remove("in-view");
+                }
+            });
+        },
+        {
+            threshold: [0, 0.05, 0.18, 0.35, 0.6],
+            root: null,
+            rootMargin: "0px 0px -6% 0px",
+        }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+}
+
 export function setOverlayHiddenByExpandedTree(hidden) {
     overlayHiddenByExpandedTree = Boolean(hidden);
     applyOverlayVisibility();
@@ -89,6 +122,7 @@ window.addEventListener('scroll', () => {
 });
 
 applyOverlayVisibility();
+initSectionScrollMotion();
 
 
 
