@@ -56,7 +56,11 @@ updateTreeScrollButtons();
 // =========================================================================
 document.addEventListener('DOMContentLoaded', async function () {
     const events = await loadMyEvents();
-    if (!events || !events.current_event) return;
+    if (!events || !events.current_event) {
+        window._currentEventId = null;
+        renderNoParticipantEventsHint();
+        return;
+    }
     await applyParticipantEventState(events);
 });
 
@@ -64,7 +68,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 window.addEventListener("participantEventSelected", async (e) => {
     const selectedEventId = e.detail?.eventId;
     const events = await loadMyEvents(selectedEventId);
-    if (!events || !events.current_event) return;
+    if (!events || !events.current_event) {
+        window._currentEventId = null;
+        renderNoParticipantEventsHint();
+        return;
+    }
     await applyParticipantEventState(events);
 });
 
@@ -125,7 +133,7 @@ async function refreshParticipantTree(eventId) {
 // =========================================================================
 let cachedParticipantTree = [];
 
-function renderSelectEventHint() {
+function renderTreeHint(message) {
     const grid = document.querySelector(".section-body-event .ressource-grid");
     const sectionBody = document.getElementById("section-body-event");
     const headlineGrid = document.getElementById("headlineGrid");
@@ -140,13 +148,22 @@ function renderSelectEventHint() {
     if (!overlay) {
         overlay = document.createElement("div");
         overlay.className = "tree-empty-overlay";
-        overlay.innerHTML = `<p class="text-bold">Bitte zuerst ein Event auswählen.</p>`;
         sectionBody.appendChild(overlay);
     }
+    overlay.innerHTML = `<p class="text-bold">${message}</p>`;
 
     if (headlineGrid) headlineGrid.querySelectorAll("p:not(.text-bold)").forEach((p) => p.remove());
 
     requestAnimationFrame(updateTreeScrollButtons);
+}
+
+function renderNoParticipantEventsHint() {
+    updateTreeViewHeading("Event wählen");
+    renderTreeHint("Du bist noch keinem Event zugeordnet.");
+}
+
+function renderSelectEventHint() {
+    renderTreeHint("Bitte zuerst ein Event auswählen.");
 }
 
 function updateTreeViewHeading(name) {

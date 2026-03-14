@@ -1,4 +1,4 @@
-import { showMessageBox, loadEvents, loadEvent, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics, updateAllEventUI } from "./main.js";
+import { showMessageBox, loadEvents, loadEvent, openOverlay, closeOverlay, updateEventDetails, updateEventDropdown, updateMessageHistory, updateRessourceStatistics, updateInteractionStatistics, updateAllEventUI, setOverlayHiddenByExpandedTree } from "./main.js";
 
 const createEventBtn = document.getElementById("btnCreateEvent");
 const createEventSubmitBtn = document.getElementById("btnCreateEventSubmit");
@@ -35,9 +35,26 @@ function updateTreeScrollButtons() {
   setTreeArrowState(btnScrollRight, canScrollRight, ARROW_RIGHT_ACTIVE, ARROW_RIGHT_INACTIVE);
 }
 
+function scheduleTreeScrollButtonsUpdate() {
+  requestAnimationFrame(() => {
+    updateTreeScrollButtons();
+    // Re-check after layout settles (expanded mode changes several dimensions).
+    setTimeout(updateTreeScrollButtons, 0);
+    setTimeout(updateTreeScrollButtons, 120);
+  });
+}
+
 if (scrollContainer) {
   scrollContainer.addEventListener("scroll", updateTreeScrollButtons);
   window.addEventListener("resize", updateTreeScrollButtons);
+
+  // Keep arrow state synced when the scroll container size changes (e.g. expanded mode).
+  if (typeof ResizeObserver !== "undefined") {
+    const treeResizeObserver = new ResizeObserver(() => {
+      scheduleTreeScrollButtonsUpdate();
+    });
+    treeResizeObserver.observe(scrollContainer);
+  }
 }
 
 btnScrollLeft.addEventListener("click", (e) => {
@@ -82,6 +99,7 @@ expandTreeViewBtn.addEventListener("click", (e) => {
 
     iconExpandTreeView.src = "/static/assets/images/arrow-expand.svg";
     sectionBodyEvent.classList.remove('expanded');
+    setOverlayHiddenByExpandedTree(false);
     exitEditMode();
   }
   else{
@@ -104,9 +122,10 @@ expandTreeViewBtn.addEventListener("click", (e) => {
 
     iconExpandTreeView.src = "/static/assets/images/overlay-close.svg";
     sectionBodyEvent.classList.add('expanded');
+    setOverlayHiddenByExpandedTree(true);
   }
 
-  requestAnimationFrame(updateTreeScrollButtons);
+  scheduleTreeScrollButtonsUpdate();
 });
 createEventBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -676,7 +695,7 @@ function renderSelectEventHint() {
 
   if (headlineGrid) headlineGrid.querySelectorAll("p:not(.text-bold)").forEach((p) => p.remove());
 
-  requestAnimationFrame(updateTreeScrollButtons);
+  scheduleTreeScrollButtonsUpdate();
 }
 
 async function refreshTreeView() {

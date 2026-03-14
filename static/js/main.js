@@ -6,6 +6,23 @@ const toggleModeBtn = document.getElementById("toggleMode");
 const messageBox = document.getElementById("message-box");
 const messageBoxText = document.getElementById("message-box-text");
 const messageBoxIcon = messageBox ? messageBox.querySelector("img") : null;
+const overlayContainer = document.getElementById("overlayContainer");
+
+let overlayHiddenByScroll = false;
+let overlayHiddenByExpandedTree = false;
+
+function applyOverlayVisibility() {
+    if (!overlayContainer) return;
+    const shouldHide = overlayHiddenByScroll || overlayHiddenByExpandedTree;
+    overlayContainer.style.opacity = shouldHide ? "0" : "1";
+    overlayContainer.style.transform = shouldHide ? "translateY(20px)" : "translateY(0px)";
+    overlayContainer.style.pointerEvents = shouldHide ? "none" : "auto";
+}
+
+export function setOverlayHiddenByExpandedTree(hidden) {
+    overlayHiddenByExpandedTree = Boolean(hidden);
+    applyOverlayVisibility();
+}
 
 const MESSAGE_ICON_WARNING = "/static/assets/images/alert-triangle.svg";
 const MESSAGE_ICON_INFO = "/static/assets/images/alert-square.svg";
@@ -67,19 +84,11 @@ window.addEventListener('scroll', () => {
     window.innerHeight + window.scrollY >=
     document.documentElement.scrollHeight - 200;
 
-  const overlay = document.getElementById("overlayContainer");
-
-  if (nearBottom){
-    overlay.style.opacity = "0";
-    overlay.style.transform = "translateY(20px)";
-    overlay.style.pointerEvents = "none";
-  } 
-  else if (overlay.style.opacity === "0"){
-    overlay.style.opacity = "1";
-    overlay.style.transform = "translateY(0px)";
-    overlay.style.pointerEvents = "auto";
-  } 
+    overlayHiddenByScroll = nearBottom;
+    applyOverlayVisibility();
 });
+
+applyOverlayVisibility();
 
 
 
@@ -108,15 +117,38 @@ export async function loadEvent(eventId) {
 }
 
 export function updateAllEventUI(events) {
-    if (!events || !events.current_event) return;
-    const ev = events.current_event;
+    const fallbackStats = {
+        "ressources": 0,
+        "people": 0,
+        "lists": 0,
+        "informations": 0,
+        "input-fields": 0,
+        "input-remaining": 0,
+        "required-fields": 0,
+        "required-remaining": 0,
+    };
+    const ev = events?.current_event || {
+        id: null,
+        name: "Alle Events",
+        created_at: "",
+        duration: "",
+        messages: [],
+        statistics: fallbackStats,
+    };
+    const allEvents = (Array.isArray(events?.all_events) && events.all_events.length > 0)
+        ? events.all_events
+        : [{ id: null, name: "Alle Events" }];
+
     window._currentEventId = ev.id;
     updateEventDetails(ev.name, ev.created_at, ev.duration, ev.id);
-    updateEventDropdown(events.all_events);
-    updateMessageHistory(ev.messages);
-    updateRessourceStatistics(ev.statistics);
-    updateInteractionStatistics(ev.statistics);
-    updateInteractionTree(ev.statistics["required-fields"], ev.statistics["required-remaining"]);
+    updateEventDropdown(allEvents);
+    updateMessageHistory(ev.messages || []);
+    updateRessourceStatistics(ev.statistics || fallbackStats);
+    updateInteractionStatistics(ev.statistics || fallbackStats);
+    updateInteractionTree(
+        (ev.statistics || fallbackStats)["required-fields"],
+        (ev.statistics || fallbackStats)["required-remaining"]
+    );
     // Update tree view section header
     const treeTitle = document.getElementById("treeViewEventName");
     if (treeTitle) treeTitle.textContent = ev.name || "Event wählen";
@@ -213,9 +245,13 @@ export function updateEventDetails(name, createdAt, duration, eventId = null) {
 
 export function updateEventDropdown(events){
     const dropdownEventsContainer = document.getElementById("dropdownEvents");
+    if (!dropdownEventsContainer) return;
+    const normalizedEvents = (Array.isArray(events) && events.length > 0)
+        ? events
+        : [{ id: null, name: "Alle Events" }];
     dropdownEventsContainer.innerHTML = "";
 
-    events.forEach(event => {
+    normalizedEvents.forEach(event => {
         const eventItem = document.createElement("div");
         const eventText = document.createElement("p");
         const eventIcon = document.createElement("img");
@@ -287,18 +323,31 @@ export function updateRessourceStatistics(stats){
     const statsLists = document.getElementById("stats-lists");
     const statsInformations = document.getElementById("stats-informations");
 
-    statsRessources.textContent = stats["ressources"];
-    statsPeople.textContent = stats["people"];
-    statsLists.textContent = stats["lists"];
-    statsInformations.textContent = stats["informations"];
+    const ressources = Number(stats["ressources"]) || 0;
+    const people = Number(stats["people"]) || 0;
+    const lists = Number(stats["lists"]) || 0;
+    const informations = Number(stats["informations"]) || 0;
+
+    statsRessources.textContent = ressources;
+    statsPeople.textContent = people;
+    statsLists.textContent = lists;
+    statsInformations.textContent = informations;
     
     const statsUsersGraph = document.getElementById("stats-users-graph");
     const statsListsGraph = document.getElementById("stats-lists-graph");
     const statsInformationsGraph = document.getElementById("stats-informations-graph");
 
-    var informationsRatioInPixel = (stats["informations"] / stats["ressources"]) * 312;
-    var listsRatioInPixel = (stats["lists"] / stats["ressources"]) * 312;
-    var usersRatioInPixel = (stats["people"] / stats["ressources"]) * 312;
+    if (ressources <= 0) {
+        statsInformationsGraph.style.height = "0px";
+        statsListsGraph.style.height = "0px";
+        statsListsGraph.style.paddingBottom = "calc(0px + var(--space))";
+        statsUsersGraph.style.paddingBottom = "calc(0px + var(--space))";
+        return;
+    }
+
+    var informationsRatioInPixel = (informations / ressources) * 312;
+    var listsRatioInPixel = (lists / ressources) * 312;
+    var usersRatioInPixel = (people / ressources) * 312;
 
     if(informationsRatioInPixel < 36 && listsRatioInPixel < 36){
         informationsRatioInPixel = 36;
@@ -375,23 +424,32 @@ export function updateInteractionStatistics(stats){
     const reqremRequiredFields = document.getElementById("reqrem-required-fields");
     const reqremRequiredRemaining = document.getElementById("reqrem-required-remaining");
 
-    inputRequiredRatio.textContent = `${((stats["required-fields"] / stats["input-fields"]) * 100).toFixed(0)}%`;
-    inpreqInputFields.textContent = stats["input-fields"];
-    inpreqRequiredFields.textContent = stats["required-fields"];
-    inputRemainingRatio.textContent = `${((stats["input-remaining"] / stats["input-fields"]) * 100).toFixed(0)}%`;
-    inpremInputFields.textContent = stats["input-fields"];
-    inpremInputRemaining.textContent = stats["input-remaining"];
-    requiredRemainingRatio.textContent = `${((stats["required-remaining"] / stats["required-fields"]) * 100).toFixed(0)}%`;
-    reqremRequiredFields.textContent = stats["required-fields"];
-    reqremRequiredRemaining.textContent = stats["required-remaining"];
+    const inputFields = Number(stats["input-fields"]) || 0;
+    const requiredFields = Number(stats["required-fields"]) || 0;
+    const inputRemaining = Number(stats["input-remaining"]) || 0;
+    const requiredRemaining = Number(stats["required-remaining"]) || 0;
+
+    const requiredInputRatio = inputFields > 0 ? ((requiredFields / inputFields) * 100).toFixed(0) : "0";
+    const inputRemainingRatioPct = inputFields > 0 ? ((inputRemaining / inputFields) * 100).toFixed(0) : "0";
+    const requiredRemainingRatioPct = requiredFields > 0 ? ((requiredRemaining / requiredFields) * 100).toFixed(0) : "0";
+
+    inputRequiredRatio.textContent = `${requiredInputRatio}%`;
+    inpreqInputFields.textContent = inputFields;
+    inpreqRequiredFields.textContent = requiredFields;
+    inputRemainingRatio.textContent = `${inputRemainingRatioPct}%`;
+    inpremInputFields.textContent = inputFields;
+    inpremInputRemaining.textContent = inputRemaining;
+    requiredRemainingRatio.textContent = `${requiredRemainingRatioPct}%`;
+    reqremRequiredFields.textContent = requiredFields;
+    reqremRequiredRemaining.textContent = requiredRemaining;
     
     const statsInpreqGraph = document.getElementById("stats-inpreq-graph");
     const statsInpremGraph = document.getElementById("stats-inprem-graph");
     const statsReqremGraph = document.getElementById("stats-reqrem-graph");
 
-    var inpreqRatioInPixel = (stats["required-fields"] / stats["input-fields"]) * 160;
-    var inpremRatioInPixel = (stats["input-remaining"] / stats["input-fields"]) * 160;
-    var reqremRatioInPixel = (stats["required-remaining"] / stats["required-fields"]) * 160;
+    var inpreqRatioInPixel = inputFields > 0 ? (requiredFields / inputFields) * 160 : 0;
+    var inpremRatioInPixel = inputFields > 0 ? (inputRemaining / inputFields) * 160 : 0;
+    var reqremRatioInPixel = requiredFields > 0 ? (requiredRemaining / requiredFields) * 160 : 0;
 
     if(inpreqRatioInPixel < 36){inpreqRatioInPixel = 36;}
     if(inpremRatioInPixel < 36){inpremRatioInPixel = 36;}
@@ -406,13 +464,15 @@ export function updateInteractionTree(requiredFields, requiredRemaining){
     const interactionTreeText = document.getElementById("reqrem-interaction-tree");
     if (!interactionTreeImg || !interactionTreeText) return;
 
-    const completed = requiredFields - requiredRemaining;
-    const requiredCompletedRatio = completed / requiredFields;
+    const totalRequired = Number(requiredFields) || 0;
+    const remainingRequired = Number(requiredRemaining) || 0;
+    const completed = totalRequired - remainingRequired;
+    const requiredCompletedRatio = totalRequired > 0 ? (completed / totalRequired) : 0;
 
     const minHeight = 144;
     const maxHeight = 432;
 
     const height = minHeight + (requiredCompletedRatio * (maxHeight - minHeight));
     interactionTreeImg.style.height = `${height}px`;
-    interactionTreeText.textContent = requiredRemaining;
+    interactionTreeText.textContent = remainingRequired;
 };

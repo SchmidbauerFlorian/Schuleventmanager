@@ -91,11 +91,27 @@ def _build_single_event_response(all_stats: list, current_id: int) -> dict:
     return {"current_event": current_event, "all_events": all_events}
 
 
+def _build_empty_response() -> dict:
+    """Builds a response for the case where no events exist."""
+    current_event = {
+        "id": None,
+        "name": "Alle Events",
+        "created_at": "",
+        "duration": "",
+        "messages": [],
+        "statistics": _sum_stats([]),
+    }
+    return {
+        "current_event": current_event,
+        "all_events": [{"id": None, "name": "Alle Events"}],
+    }
+
+
 def delete_event(event_name: str) -> dict:
     queries.delete_event_by_name(event_name)
     all_stats = queries.fetch_all_events()
     if not all_stats:
-        return {"current_event": None, "all_events": []}
+        return _build_empty_response()
     return _build_aggregate_response(all_stats)
 
 
@@ -103,21 +119,21 @@ def create_event(event_name: str) -> dict:
     new_id = queries.create_event_by_name(event_name, event_name)
     all_stats = queries.fetch_all_events()
     if not all_stats:
-        return {"current_event": None, "all_events": []}
+        return _build_empty_response()
     return _build_single_event_response(all_stats, new_id)
 
 
 def get_event(event_id: int) -> dict:
     all_stats = queries.fetch_all_events()
     if not all_stats:
-        return {"current_event": None, "all_events": []}
+        return _build_empty_response()
     return _build_single_event_response(all_stats, event_id)
 
 
 def get_events(user_id) -> dict:
     all_stats = queries.fetch_all_events()
     if not all_stats:
-        return {"current_event": None, "all_events": []}
+        return _build_empty_response()
     return _build_aggregate_response(all_stats)
 
 
