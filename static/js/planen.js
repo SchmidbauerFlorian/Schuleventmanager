@@ -1155,30 +1155,32 @@ function renderTreeView(resources, unlinkedEntities = []) {
       entryRow.className = "tree-entry-row";
       entryRow.style.gridTemplateColumns = `repeat(${totalCols}, 246px)`;
 
-      // Delete icon in resource column, aligned right
+      // Delete icon in resource column, aligned right (not for person resources)
       const spacer = document.createElement("div");
       spacer.className = "tree-entry-spacer";
-      const deleteIcon = document.createElement("img");
-      deleteIcon.src = "/static/assets/images/tv_x_entries.svg";
-      deleteIcon.alt = "Delete";
-      deleteIcon.className = "tree-entry-delete";
-      deleteIcon.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        try {
-          await fetch("/api/list-entry", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              instanceId: instance._id,
-              relInstanceId: instance._rel_instance_id || null,
-            }),
-          });
-          refreshTreeView();
-        } catch (err) {
-          console.error("Delete entry error:", err);
-        }
-      });
-      spacer.appendChild(deleteIcon);
+      if (!resource.hasPersons) {
+        const deleteIcon = document.createElement("img");
+        deleteIcon.src = "/static/assets/images/tv_x_entries.svg";
+        deleteIcon.alt = "Delete";
+        deleteIcon.className = "tree-entry-delete";
+        deleteIcon.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            await fetch("/api/list-entry", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                instanceId: instance._id,
+                relInstanceId: instance._rel_instance_id || null,
+              }),
+            });
+            refreshTreeView();
+          } catch (err) {
+            console.error("Delete entry error:", err);
+          }
+        });
+        spacer.appendChild(deleteIcon);
+      }
       entryRow.appendChild(spacer);
 
       // Values
