@@ -431,6 +431,19 @@ attributDropdown.addEventListener("click", (e) => {
   attributFieldsRessource.style.display = type === "ressource" ? "flex" : "none";
   const attributFieldsEingabe = document.getElementById("attributFieldsEingabe");
   attributFieldsEingabe.style.display = type === "eingabe" ? "flex" : "none";
+  if (type === "eingabe") {
+    const targetText = document.getElementById("eingabeHinzufuegenSelectedText");
+    targetText.textContent = "Hinzufügen zu";
+    delete targetText.dataset.entityId;
+    delete targetText.dataset.hasPersons;
+
+    const berText = document.getElementById("eingabeBerechtigungSelectedText");
+    berText.textContent = "Berechtigung";
+    delete berText.dataset.access;
+
+    document.querySelectorAll('#eingabeBerechtigungDropdown .dropdown-item').forEach(i => i.style.display = '');
+    applyEingabeDependencyState();
+  }
   closeAllSubDropdowns();
 });
 
@@ -470,6 +483,7 @@ subDropdowns.forEach(sd => {
   const textEl = document.getElementById(sd.text);
 
   btn.addEventListener("click", (e) => {
+    if (btn.classList.contains("is-disabled-20")) return;
     e.stopPropagation();
     const isOpen = dropdown.style.display === "flex";
     closeAllSubDropdowns();
@@ -499,6 +513,7 @@ subDropdowns.forEach(sd => {
         berText.textContent = 'Berechtigung';
         delete berText.dataset.access;
       }
+      applyEingabeDependencyState();
     }
   });
 });
@@ -527,6 +542,37 @@ const eingabePflichtBtn = document.getElementById("eingabePflichtBtn");
 const eingabePflichtText = document.getElementById("eingabePflichtText");
 const eingabePflichtIcon = document.getElementById("eingabePflichtIcon");
 let isPflichtfeld = false;
+
+function setEingabeControlDisabled(controlEl, disabled) {
+  if (!controlEl) return;
+  controlEl.classList.toggle("is-disabled-20", Boolean(disabled));
+}
+
+function resetEingabeZeitlimitAndPflichtfeld() {
+  eingabeZeitlimitDate.value = "";
+  eingabeZeitlimitText.textContent = "Kein Zeitlimit";
+  isPflichtfeld = false;
+  eingabePflichtText.textContent = "Kein Pflichtfeld";
+  eingabePflichtIcon.src = "/static/assets/images/toggle-left.svg";
+}
+
+function applyEingabeDependencyState() {
+  const targetText = document.getElementById("eingabeHinzufuegenSelectedText");
+  const hasTarget = Boolean(targetText?.dataset?.entityId);
+  const isPersonRes = targetText?.dataset?.hasPersons === "true";
+
+  setEingabeControlDisabled(document.getElementById("eingabeBerechtigungDropdownBtn"), !hasTarget);
+
+  const disableZeitlimitAndPflicht = !hasTarget || !isPersonRes;
+  setEingabeControlDisabled(eingabeZeitlimitBtn, disableZeitlimitAndPflicht);
+  setEingabeControlDisabled(eingabePflichtBtn, disableZeitlimitAndPflicht);
+
+  if (disableZeitlimitAndPflicht) {
+    resetEingabeZeitlimitAndPflichtfeld();
+  }
+}
+
+applyEingabeDependencyState();
 
 eingabePflichtBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -642,13 +688,15 @@ btnCreateAttribut.addEventListener("click", async (e) => {
       showMessageBox("Fehler: Bitte Formatvorgabe wählen (Text, Zahl oder Datum)!");
       return;
     }
-    payload.expirationDate = document.getElementById("eingabeZeitlimitDate").value || null;
-    payload.isRequired = isPflichtfeld;
-    payload.entityId = parseInt(document.getElementById("eingabeHinzufuegenSelectedText").dataset.entityId);
+    const targetText = document.getElementById("eingabeHinzufuegenSelectedText");
+    payload.entityId = parseInt(targetText.dataset.entityId);
     if (!payload.entityId) {
       showMessageBox("Fehler: Bitte Ziel-Ressource wählen!");
       return;
     }
+    const isPersonRes = targetText.dataset.hasPersons === "true";
+    payload.expirationDate = isPersonRes ? (document.getElementById("eingabeZeitlimitDate").value || null) : null;
+    payload.isRequired = isPersonRes ? isPflichtfeld : false;
   }
 
   try {
@@ -1559,6 +1607,10 @@ function enterAttributeEditMode(attr, resource) {
     // Toggle Schreiben visibility based on resource type
     const writeItem = document.querySelector('#eingabeBerechtigungDropdown .dropdown-item[data-access="write"]');
     if (writeItem) writeItem.style.display = resource.hasPersons ? '' : 'none';
+    const eingabeTarget = document.getElementById('eingabeHinzufuegenSelectedText');
+    eingabeTarget.dataset.entityId = String(resource.entity_id);
+    eingabeTarget.dataset.hasPersons = resource.hasPersons ? 'true' : 'false';
+    applyEingabeDependencyState();
     document.getElementById('eingabeHinzufuegenDropdownBtn').style.display = 'none';
     // Formatvorlage is fixed for existing attributes
     const formatBtn = document.getElementById('eingabeFormatDropdownBtn');
@@ -1603,6 +1655,12 @@ function exitEditMode() {
   const eingBer = document.getElementById('eingabeBerechtigungSelectedText');
   eingBer.textContent = 'Berechtigung';
   delete eingBer.dataset.access;
+  const eingabeTarget = document.getElementById('eingabeHinzufuegenSelectedText');
+  eingabeTarget.textContent = 'Hinzufügen zu';
+  delete eingabeTarget.dataset.entityId;
+  delete eingabeTarget.dataset.hasPersons;
+  resetEingabeZeitlimitAndPflichtfeld();
+  applyEingabeDependencyState();
   // Restore all Berechtigung options visibility
   document.querySelectorAll('#eingabeBerechtigungDropdown .dropdown-item').forEach(i => i.style.display = '');
 

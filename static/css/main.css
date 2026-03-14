@@ -576,12 +576,12 @@ footer{
 .section-event-teilnehmen{
     padding-bottom: calc(var(--space) * 8);
 }
+/*
 .expanded-container{
-    /*
     width: calc(1366px - (var(--space) * 4 * 2));
     margin: 0 auto;
-    */
 }
+*/
 .section-body-event{
     position: relative;
     width: 100%;
@@ -632,6 +632,15 @@ footer{
     padding: 0 var(--space);
     gap: calc(var(--space) / 2);
     cursor: text;
+}
+.ressource-input-wrapper.is-disabled-20{
+    opacity: 0.2;
+    pointer-events: none;
+}
+.ressource-input-wrapper.is-disabled-20 input,
+.ressource-input-wrapper.is-disabled-20 p,
+.ressource-input-wrapper.is-disabled-20 img{
+    pointer-events: none;
 }
 .ressource-input-wrapper p{
     flex: 1;

@@ -464,16 +464,6 @@
                                 <img src="{{ url_for('static', filename='assets/images/tv_input.svg') }}" alt="Input Icon">
                                 <input type="text" id="eingabeAttributName" placeholder="Attributname">
                             </label>
-                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeBerechtigungDropdownBtn">
-                                <img src="{{ url_for('static', filename='assets/images/tv_visibility.png') }}" alt="Visibility Icon">
-                                <p id="eingabeBerechtigungSelectedText">Berechtigung</p>
-                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
-                                <div id="eingabeBerechtigungDropdown" class="dropdown-container">
-                                    <div class="dropdown-item clickable" data-access="hidden"><p>Versteckt</p></div>
-                                    <div class="dropdown-item clickable" data-access="read"><p>Lesen</p></div>
-                                    <div class="dropdown-item clickable" data-access="write"><p>Schreiben</p></div>
-                                </div>
-                            </div>
                             <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeFormatDropdownBtn">
                                 <img src="{{ url_for('static', filename='assets/images/tv_format.svg') }}" alt="Format Icon">
                                 <p id="eingabeFormatSelectedText">Formatvorgabe</p>
@@ -482,6 +472,16 @@
                                     <div class="dropdown-item clickable"><p>Text</p></div>
                                     <div class="dropdown-item clickable"><p>Zahl</p></div>
                                     <div class="dropdown-item clickable"><p>Datum</p></div>
+                                </div>
+                            </div>
+                            <div class="button-light ressource-input-wrapper ressource-dropdown-wrapper" id="eingabeBerechtigungDropdownBtn">
+                                <img src="{{ url_for('static', filename='assets/images/tv_visibility.png') }}" alt="Visibility Icon">
+                                <p id="eingabeBerechtigungSelectedText">Berechtigung</p>
+                                <img src="{{ url_for('static', filename='assets/images/chevron.svg') }}" alt="Chevron Icon">
+                                <div id="eingabeBerechtigungDropdown" class="dropdown-container">
+                                    <div class="dropdown-item clickable" data-access="hidden"><p>Versteckt</p></div>
+                                    <div class="dropdown-item clickable" data-access="read"><p>Lesen</p></div>
+                                    <div class="dropdown-item clickable" data-access="write"><p>Schreiben</p></div>
                                 </div>
                             </div>
                             <div class="eingabe-row">
