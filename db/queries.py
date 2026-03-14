@@ -1383,6 +1383,7 @@ def get_event_tree_data(event_instance_id: int):
                 attr_dict = {
                     "name": a['attribute_name'], "datatype": a['datatype'],
                     "isInputField": bool(a['isInputField']),
+                    "isRequired": bool(a.get('isRequired', False)),
                     "isListRessource": bool(a.get('isListRessource', False)),
                     "isSingularRessource": bool(a.get('isSingularRessource', False)),
                     "isPersonRessource": bool(a.get('isPersonRessource', False)),

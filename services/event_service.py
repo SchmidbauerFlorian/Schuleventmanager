@@ -24,6 +24,136 @@ def _format_stats(stats_row: dict) -> dict:
     }
 
 
+def _is_empty_field_value(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    return False
+
+
+def _compute_tree_stats(event_instance_id: int) -> dict:
+    """Compute tree-based resource + interaction statistics for one event.
+
+    Resource rules:
+    - Person resources: count all linked person entries.
+    - Non-person resources: 0/1 entry => single information, >=2 entries => list entries.
+
+    Interaction rules:
+    - Input fields: only attributes on person resources with isInputField + access=write.
+    - Required fields: subset of the above with isRequired.
+    - Remaining counters are counted per entry where the value is empty.
+    """
+    tree = queries.get_event_tree_data(event_instance_id)
+
+    people = 0
+    lists = 0
+    informations = 0
+    input_fields = 0
+    input_remaining = 0
+    required_fields = 0
+    required_remaining = 0
+
+    for resource in tree:
+        instances = resource.get("instances", [])
+        entry_count = len(instances)
+        has_persons = bool(resource.get("hasPersons"))
+
+        if has_persons:
+            people += entry_count
+        else:
+            if entry_count <= 1:
+                informations += entry_count
+            else:
+                lists += entry_count
+
+        if not has_persons:
+            continue
+
+        for attr in resource.get("attributes", []):
+            if not bool(attr.get("isInputField")):
+                continue
+            if str(attr.get("access", "")).lower() != "write":
+                continue
+
+            attr_name = attr.get("name")
+            if not attr_name:
+                continue
+
+            is_required = bool(attr.get("isRequired"))
+
+            for instance in instances:
+                input_fields += 1
+                is_empty = _is_empty_field_value(instance.get(attr_name))
+                if is_empty:
+                    input_remaining += 1
+
+                if is_required:
+                    required_fields += 1
+                    if is_empty:
+                        required_remaining += 1
+
+    return {
+        "ressources": people + lists + informations,
+        "people": people,
+        "lists": lists,
+        "informations": informations,
+        "input-fields": input_fields,
+        "input-remaining": input_remaining,
+        "required-fields": required_fields,
+        "required-remaining": required_remaining,
+    }
+
+
+def _compute_participant_interaction_stats(event_instance_id: int, user_id: int) -> dict:
+    """Compute participant-specific interaction stats for one event.
+
+    Counts only fields that are visible in participant tree, writable by the
+    current user, and belong to the user's own person-resource entry.
+    """
+    tree = queries.get_participant_tree_data(event_instance_id, user_id)
+
+    input_fields = 0
+    input_remaining = 0
+    required_fields = 0
+    required_remaining = 0
+
+    for resource in tree:
+        if not bool(resource.get("hasPersons")):
+            continue
+
+        instances = resource.get("instances", [])
+        for attr in resource.get("attributes", []):
+            if not bool(attr.get("isInputField")):
+                continue
+            if not bool(attr.get("userCanEdit")):
+                continue
+
+            attr_name = attr.get("name")
+            if not attr_name:
+                continue
+
+            is_required = bool(attr.get("isRequired"))
+
+            for instance in instances:
+                input_fields += 1
+                is_empty = _is_empty_field_value(instance.get(attr_name))
+                if is_empty:
+                    input_remaining += 1
+
+                if is_required:
+                    required_fields += 1
+                    if is_empty:
+                        required_remaining += 1
+
+    return {
+        "input-fields": input_fields,
+        "input-remaining": input_remaining,
+        "required-fields": required_fields,
+        "required-remaining": required_remaining,
+    }
+
+
 def _format_current_event(stats_row: dict, attrs: dict) -> dict:
     """Builds the current_event object from a stats row + attribute dict."""
     created_at = ""
@@ -33,30 +163,43 @@ def _format_current_event(stats_row: dict, attrs: dict) -> dict:
             created_at = datetime.strptime(str(raw), '%Y-%m-%d %H:%M:%S').strftime('%d.%m.%Y')
         except ValueError:
             created_at = str(raw)
+    event_instance_id = stats_row.get('event_instance_id')
+    stats = _format_stats(stats_row)
+    if event_instance_id is not None:
+        stats.update(_compute_tree_stats(event_instance_id))
+
     return {
         "id":         stats_row.get('event_instance_id'),
         "name":       stats_row.get('event_name', ''),
         "created_at": created_at,
         "duration":   "",
         "messages":   [],
-        "statistics": _format_stats(stats_row),
+        "statistics": stats,
     }
 
 
 def _sum_stats(all_stats: list) -> dict:
     """Sums statistics across all event rows into one aggregate stats dict."""
-    def _i(row, key): return int(row.get(key) or 0)
-    return {
-        "ressources":         sum(_i(r, 'cnt_ressources')          for r in all_stats),
-        "people":             sum(_i(r, 'cnt_person_ressources')   for r in all_stats),
-        "lists":              sum(_i(r, 'cnt_list_ressources')     for r in all_stats),
-        "informations":       sum(_i(r, 'cnt_singular_ressources') for r in all_stats),
-        "input-fields":       sum(_i(r, 'cnt_input_fields')        for r in all_stats),
-        "input-remaining":    sum(_i(r, 'cnt_input_fields')        for r in all_stats)
-                            - sum(_i(r, 'cnt_input_fields_filled') for r in all_stats),
-        "required-fields":    sum(_i(r, 'cnt_required')            for r in all_stats),
-        "required-remaining": sum(_i(r, 'cnt_required_missing')    for r in all_stats),
+    totals = {
+        "ressources": 0,
+        "people": 0,
+        "lists": 0,
+        "informations": 0,
+        "input-fields": 0,
+        "input-remaining": 0,
+        "required-fields": 0,
+        "required-remaining": 0,
     }
+
+    for row in all_stats:
+        event_instance_id = row.get('event_instance_id')
+        if event_instance_id is None:
+            continue
+        ts = _compute_tree_stats(event_instance_id)
+        for k in totals:
+            totals[k] += ts[k]
+
+    return totals
 
 
 def _build_aggregate_response(all_stats: list) -> dict:
@@ -334,13 +477,30 @@ def get_my_events(user_email: str, selected_event=None) -> dict:
     ]
 
     if selected_event == "all" or selected_event is None:
+        participant_interaction_totals = {
+            "input-fields": 0,
+            "input-remaining": 0,
+            "required-fields": 0,
+            "required-remaining": 0,
+        }
+        for row in my_stats:
+            event_id = row.get('event_instance_id')
+            if event_id is None:
+                continue
+            event_stats = _compute_participant_interaction_stats(event_id, user_id)
+            for key in participant_interaction_totals:
+                participant_interaction_totals[key] += event_stats[key]
+
+        all_stats = _sum_stats(my_stats)
+        all_stats.update(participant_interaction_totals)
+
         current_event = {
             "id": None,
             "name": "Alle Events",
             "created_at": "",
             "duration": "",
             "messages": [],
-            "statistics": _sum_stats(my_stats),
+            "statistics": all_stats,
         }
     elif isinstance(selected_event, int):
         current_row = next(
@@ -349,6 +509,12 @@ def get_my_events(user_email: str, selected_event=None) -> dict:
         )
         attrs = queries.get_event_instance_attributes(current_row['event_instance_id'])
         current_event = _format_current_event(current_row, attrs)
+
+        participant_stats = _compute_participant_interaction_stats(
+            current_row['event_instance_id'],
+            user_id,
+        )
+        current_event["statistics"].update(participant_stats)
 
     return {"current_event": current_event, "all_events": all_events_list}
 

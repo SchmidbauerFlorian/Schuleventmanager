@@ -773,11 +773,14 @@ label.ressource-input-wrapper{
 .tree-resource-block{
     display: flex;
     flex-direction: column;
+    width: max-content;
+    min-width: 100%;
 }
 .tree-resource-header-row{
     display: grid;
     grid-auto-rows: calc(var(--space) * 2);
     column-gap: 0;
+    width: max-content;
 }
 .tree-entries-container{
     display: flex;
@@ -786,6 +789,8 @@ label.ressource-input-wrapper{
     margin-top: calc(var(--space) / 2);
     max-height: calc(var(--space) * 2 * 5.5 + var(--space) / 2 * 5);
     overflow-y: auto;
+    width: max-content;
+    min-width: 100%;
 }
 .section-body-event.expanded .tree-entries-container{
     max-height: calc(var(--space) * 2 * 5.5 + var(--space) / 2 * 5);
@@ -794,6 +799,7 @@ label.ressource-input-wrapper{
     display: grid;
     grid-auto-rows: calc(var(--space) * 2);
     column-gap: 0;
+    width: max-content;
 }
 #r-student{
     grid-column: 1 / 1;
@@ -953,11 +959,18 @@ label.ressource-input-wrapper{
     text-overflow: ellipsis;
     font-size: 0.9rem;
     flex: 1;
+    min-width: 0;
 }
 .tree-cell img{
     width: 10px;
     opacity: 0.4;
     cursor: pointer;
+}
+.tree-cell .tree-cell-icon{
+    flex: 0 0 auto;
+    width: 10px;
+    min-width: 10px;
+    display: block;
 }
 .tree-cell img:hover{
     opacity: 0.8;
@@ -1187,4 +1200,5 @@ select.tree-cell-input{
 }
 .section-placeholder{
     width: 550px;
+    filter: brightness(10);
 }

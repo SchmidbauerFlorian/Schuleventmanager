@@ -31,6 +31,15 @@ function updateTreeScrollButtons() {
     setTreeArrowState(btnScrollRight, canScrollRight, ARROW_RIGHT_ACTIVE, ARROW_RIGHT_INACTIVE);
 }
 
+function getTreeHorizontalStep() {
+    const firstCell = document.querySelector(".tree-resource-header-row > *");
+    if (firstCell) {
+        const width = Math.round(firstCell.getBoundingClientRect().width);
+        if (width > 0) return width;
+    }
+    return 246;
+}
+
 if (scrollContainer) {
     scrollContainer.addEventListener("scroll", updateTreeScrollButtons);
     window.addEventListener("resize", updateTreeScrollButtons);
@@ -39,14 +48,14 @@ if (scrollContainer) {
 btnScrollLeft.addEventListener("click", (e) => {
   e.stopPropagation();
     if (!scrollContainer || scrollContainer.scrollLeft <= 1) return;
-  scrollContainer.scrollBy({ left: -250, behavior: "smooth" });
+    scrollContainer.scrollBy({ left: -getTreeHorizontalStep(), behavior: "smooth" });
 });
 btnScrollRight.addEventListener("click", (e) => {
   e.stopPropagation();
     if (!scrollContainer) return;
     const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
     if (scrollContainer.scrollLeft >= maxScrollLeft - 1) return;
-  scrollContainer.scrollBy({ left: 250, behavior: "smooth" });
+    scrollContainer.scrollBy({ left: getTreeHorizontalStep(), behavior: "smooth" });
 });
 
 updateTreeScrollButtons();
@@ -113,6 +122,20 @@ async function applyParticipantEventState(events) {
         );
     }
     await refreshParticipantTree(events.current_event.id);
+}
+
+async function refreshParticipantStatistics() {
+    const eventId = window._currentEventId;
+    if (!eventId) return;
+    const events = await loadMyEvents(eventId);
+    const stats = events?.current_event?.statistics;
+    if (!stats) return;
+
+    updateInteractionStatistics(stats);
+    updateInteractionTree(
+        stats["required-fields"],
+        stats["required-remaining"]
+    );
 }
 
 async function refreshParticipantTree(eventId) {
@@ -353,7 +376,9 @@ function startParticipantInlineEdit(cell, instance, attr, resource) {
             });
             if (!resp.ok) {
                 showMessageBox('Fehler beim Speichern!');
+                return;
             }
+            await refreshParticipantStatistics();
         } catch (err) {
             console.error('Update Fehler:', err);
             showMessageBox('Fehler beim Speichern!');

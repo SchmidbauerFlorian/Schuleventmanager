@@ -167,6 +167,7 @@ export function closeDropdown() {
 }
 export function openOverlay(overlayId) {
   const overlayContainer = document.getElementById("overlayContainer");
+    if (!overlayContainer) return;
   const overlays = overlayContainer.querySelectorAll(".overlay");
 
   let overlay;
@@ -188,6 +189,8 @@ export function openOverlay(overlayId) {
     overlay = document.getElementById("overlaySEM");
     overlayContainer.style.height = "536px";
   }
+
+    if (!overlay) return;
 
   const wasVisible = overlay.style.display === "flex";
 
@@ -338,12 +341,31 @@ export function updateRessourceStatistics(stats){
     const statsInformationsGraph = document.getElementById("stats-informations-graph");
 
     if (ressources <= 0) {
-        statsInformationsGraph.style.height = "0px";
-        statsListsGraph.style.height = "0px";
-        statsListsGraph.style.paddingBottom = "calc(0px + var(--space))";
-        statsUsersGraph.style.paddingBottom = "calc(0px + var(--space))";
+        const neutralPart = 104; // 312 / 3
+        statsUsersGraph.style.height = "312px";
+        statsListsGraph.style.height = `${neutralPart * 2}px`;
+        statsInformationsGraph.style.height = `${neutralPart}px`;
+
+        statsUsersGraph.style.padding = "var(--space)";
+        statsListsGraph.style.padding = "var(--space)";
+        statsInformationsGraph.style.padding = "var(--space)";
+
+        statsListsGraph.style.paddingBottom = `calc(${neutralPart}px + var(--space))`;
+        statsUsersGraph.style.paddingBottom = `calc(${neutralPart * 2}px + var(--space))`;
+
+        statsUsersGraph.style.opacity = "1";
+        statsListsGraph.style.opacity = "1";
+        statsInformationsGraph.style.opacity = "1";
         return;
     }
+
+    statsUsersGraph.style.height = "312px";
+    statsUsersGraph.style.padding = "var(--space)";
+    statsListsGraph.style.padding = "var(--space)";
+    statsInformationsGraph.style.padding = "var(--space)";
+    statsUsersGraph.style.opacity = "1";
+    statsListsGraph.style.opacity = "1";
+    statsInformationsGraph.style.opacity = "1";
 
     var informationsRatioInPixel = (informations / ressources) * 312;
     var listsRatioInPixel = (lists / ressources) * 312;
@@ -366,9 +388,9 @@ export function updateRessourceStatistics(stats){
     }
     else if(informationsRatioInPixel < 36){
         informationsRatioInPixel = 36;
-        var newTotal = stats["ressources"] - stats["informations"];
-        listsRatioInPixel = (stats["lists"] / newTotal) * 276;
-        usersRatioInPixel = (stats["people"] / newTotal) * 276;
+        var newTotal = ressources - informations;
+        listsRatioInPixel = (lists / newTotal) * 276;
+        usersRatioInPixel = (people / newTotal) * 276;
         if(listsRatioInPixel < 36){
             listsRatioInPixel = 36;
             usersRatioInPixel = 240;
@@ -380,9 +402,9 @@ export function updateRessourceStatistics(stats){
     }
     else if(listsRatioInPixel < 36){
         listsRatioInPixel = 36;
-        var newTotal = stats["ressources"] - stats["lists"];
-        informationsRatioInPixel = (stats["informations"] / newTotal) * 276;
-        usersRatioInPixel = (stats["people"] / newTotal) * 276;
+        var newTotal = ressources - lists;
+        informationsRatioInPixel = (informations / newTotal) * 276;
+        usersRatioInPixel = (people / newTotal) * 276;
         if(informationsRatioInPixel < 36){
             informationsRatioInPixel = 36;
             usersRatioInPixel = 240;
@@ -394,9 +416,9 @@ export function updateRessourceStatistics(stats){
     }
     else if(usersRatioInPixel < 36){
         usersRatioInPixel = 36;
-        var newTotal = stats["ressources"] - stats["people"];
-        informationsRatioInPixel = (stats["informations"] / newTotal) * 276;
-        listsRatioInPixel = (stats["lists"] / newTotal) * 276;
+        var newTotal = ressources - people;
+        informationsRatioInPixel = (informations / newTotal) * 276;
+        listsRatioInPixel = (lists / newTotal) * 276;
         if(informationsRatioInPixel < 36){
             informationsRatioInPixel = 36;
             listsRatioInPixel = 240;

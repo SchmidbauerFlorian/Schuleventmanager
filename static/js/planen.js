@@ -35,6 +35,15 @@ function updateTreeScrollButtons() {
   setTreeArrowState(btnScrollRight, canScrollRight, ARROW_RIGHT_ACTIVE, ARROW_RIGHT_INACTIVE);
 }
 
+function getTreeHorizontalStep() {
+  const firstCell = document.querySelector(".tree-resource-header-row > *");
+  if (firstCell) {
+    const width = Math.round(firstCell.getBoundingClientRect().width);
+    if (width > 0) return width;
+  }
+  return 246;
+}
+
 function scheduleTreeScrollButtonsUpdate() {
   requestAnimationFrame(() => {
     updateTreeScrollButtons();
@@ -60,14 +69,14 @@ if (scrollContainer) {
 btnScrollLeft.addEventListener("click", (e) => {
   e.stopPropagation();
   if (!scrollContainer || scrollContainer.scrollLeft <= 1) return;
-  scrollContainer.scrollBy({ left: -250, behavior: "smooth" });
+  scrollContainer.scrollBy({ left: -getTreeHorizontalStep(), behavior: "smooth" });
 });
 btnScrollRight.addEventListener("click", (e) => {
   e.stopPropagation();
   if (!scrollContainer) return;
   const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
   if (scrollContainer.scrollLeft >= maxScrollLeft - 1) return;
-  scrollContainer.scrollBy({ left: 250, behavior: "smooth" });
+  scrollContainer.scrollBy({ left: getTreeHorizontalStep(), behavior: "smooth" });
 });
 
 updateTreeScrollButtons();
@@ -742,6 +751,17 @@ async function addListEntry(entityId, attributes) {
   }
 }
 
+async function refreshPlannerStatistics() {
+  const eventId = getCurrentEventId();
+  if (!eventId) return;
+  try {
+    const events = await loadEvent(eventId);
+    updateAllEventUI(events);
+  } catch (err) {
+    console.error("Statistik-Refresh Fehler:", err);
+  }
+}
+
 function startInlineEdit(cell, instance, attr, resource) {
   const p = cell.querySelector('p');
   if (!p || cell.querySelector('input') || cell.querySelector('select')) return;
@@ -801,13 +821,19 @@ function startInlineEdit(cell, instance, attr, resource) {
           payload.relationId = resource.relation_id;
           payload.relInstanceId = instance._rel_instance_id;
         }
-        await fetch('/api/update-instance-value', {
+        const resp = await fetch('/api/update-instance-value', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        if (!resp.ok) {
+          showMessageBox('Fehler beim Speichern!');
+          return;
+        }
+        await refreshPlannerStatistics();
       } catch (err) {
         console.error('Update Fehler:', err);
+        showMessageBox('Fehler beim Speichern!');
       }
     };
     select.addEventListener('change', save);
@@ -874,13 +900,19 @@ function startInlineEdit(cell, instance, attr, resource) {
         payload.relationId = resource.relation_id;
         payload.relInstanceId = instance._rel_instance_id;
       }
-      await fetch('/api/update-instance-value', {
+      const resp = await fetch('/api/update-instance-value', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (!resp.ok) {
+        showMessageBox('Fehler beim Speichern!');
+        return;
+      }
+      await refreshPlannerStatistics();
     } catch (err) {
       console.error('Update Fehler:', err);
+      showMessageBox('Fehler beim Speichern!');
     }
   };
   input.addEventListener('blur', save);
@@ -1208,6 +1240,8 @@ function renderTreeView(resources, unlinkedEntities = []) {
         cell.className = "tree-cell";
         const val = instance[attr.name];
         const displayVal = formatDisplayValue(val, attr.datatype);
+        const isRelationAttribute = (attr.source || "relation") === "relation";
+        const canInlineEdit = !attr.isSingularRessource && !attr.isPersonRessource && (attr.isInputField || isRelationAttribute);
 
         if (attr.isSingularRessource && attr.ref_entity_type && attr.ref_attribute_name) {
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/chevron.svg" alt="Select" class="tree-cell-icon">`;
@@ -1310,14 +1344,16 @@ function renderTreeView(resources, unlinkedEntities = []) {
               console.error('Dropdown Fehler:', err);
             }
           });
-        } else if (attr.isPersonRessource || (resource.hasPersons && !attr.isInputField && !attr.isSingularRessource)) {
-          cell.innerHTML = `<p>${displayVal}</p>`;
-        } else {
+        } else if (canInlineEdit) {
           cell.innerHTML = `<p>${displayVal}</p><img src="/static/assets/images/tv_input.svg" alt="Edit" class="tree-cell-icon">`;
           cell.querySelector('.tree-cell-icon').addEventListener('click', (e) => {
             e.stopPropagation();
             startInlineEdit(cell, instance, attr, resource);
           });
+        } else if (attr.isPersonRessource) {
+          cell.innerHTML = `<p>${displayVal}</p>`;
+        } else {
+          cell.innerHTML = `<p>${displayVal}</p>`;
         }
         entryRow.appendChild(cell);
       });
