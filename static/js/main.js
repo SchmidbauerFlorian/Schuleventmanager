@@ -5,8 +5,20 @@ const logoutBtn = document.getElementById("btnLogout");
 const toggleModeBtn = document.getElementById("toggleMode");
 const messageBox = document.getElementById("message-box");
 const messageBoxText = document.getElementById("message-box-text");
+const messageBoxIcon = messageBox ? messageBox.querySelector("img") : null;
 
-export function showMessageBox(message) {
+const MESSAGE_ICON_WARNING = "/static/assets/images/alert-triangle.svg";
+const MESSAGE_ICON_INFO = "/static/assets/images/alert-square.svg";
+
+export function showMessageBox(message, type = "warning") {
+    if (!messageBox || !messageBoxText) return;
+
+    const isInfo = type === "info";
+    if (messageBoxIcon) {
+        messageBoxIcon.src = isInfo ? MESSAGE_ICON_INFO : MESSAGE_ICON_WARNING;
+        messageBoxIcon.alt = isInfo ? "Info Icon" : "Warning Icon";
+    }
+
     messageBoxText.textContent = message;
     messageBox.style.animation = "none";
     void messageBox.offsetWidth; // reflow erzwingen
@@ -99,7 +111,7 @@ export function updateAllEventUI(events) {
     if (!events || !events.current_event) return;
     const ev = events.current_event;
     window._currentEventId = ev.id;
-    updateEventDetails(ev.name, ev.created_at, ev.duration);
+    updateEventDetails(ev.name, ev.created_at, ev.duration, ev.id);
     updateEventDropdown(events.all_events);
     updateMessageHistory(ev.messages);
     updateRessourceStatistics(ev.statistics);
@@ -178,16 +190,25 @@ export function closeOverlay() {
 
 
 
-export function updateEventDetails(name, createdAt, duration) {
+export function updateEventDetails(name, createdAt, duration, eventId = null) {
   const dropdownSelectedItem = document.getElementById("dropdownSelectedItem");
   const eventNameElem        = document.getElementById("eventName");
   const eventCreatedAtElem   = document.getElementById("eventCreatedAt");
   const eventDurationElem    = document.getElementById("eventDuration");
+    const deleteEventBtn       = document.getElementById("btnDeleteEvent");
+
+    const isAllEventsSelected = eventId === null || eventId === undefined;
+    const createdAtSection = eventCreatedAtElem ? eventCreatedAtElem.parentElement : null;
+    const deleteEventSection = deleteEventBtn ? deleteEventBtn.parentElement : null;
 
   if (dropdownSelectedItem) dropdownSelectedItem.textContent = name;
   if (eventNameElem)        eventNameElem.textContent = name;
   if (eventCreatedAtElem)   eventCreatedAtElem.textContent = createdAt;
   if (eventDurationElem)    eventDurationElem.textContent = duration;
+
+    // In plan view, these controls should only be visible for a concrete event selection.
+    if (createdAtSection) createdAtSection.style.display = isAllEventsSelected ? "none" : "";
+    if (deleteEventSection) deleteEventSection.style.display = isAllEventsSelected ? "none" : "";
 }
 
 export function updateEventDropdown(events){
@@ -211,6 +232,18 @@ export function updateEventDropdown(events){
         eventItem.addEventListener("click", async (e) => {
             e.stopPropagation();
             closeDropdown();
+
+            // Participant view has its own filtered event data source.
+            const currentMode = toggleModeBtn?.dataset?.currentMode;
+            if (currentMode === "teilnehmen") {
+                window.dispatchEvent(new CustomEvent("participantEventSelected", {
+                    detail: {
+                        eventId: event["id"],
+                    },
+                }));
+                return;
+            }
+
             const events = event["id"] === null
                 ? await loadEvents()
                 : await loadEvent(event["id"]);

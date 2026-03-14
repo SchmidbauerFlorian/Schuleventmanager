@@ -425,7 +425,18 @@ def api_my_events():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
     email = user.get("mail") or user.get("userPrincipalName", "")
-    events = svc_get_my_events(email)
+    selected_event_raw = request.args.get("eventId")
+    selected_event = None
+    if selected_event_raw:
+        if selected_event_raw.lower() == "all":
+            selected_event = "all"
+        else:
+            try:
+                selected_event = int(selected_event_raw)
+            except ValueError:
+                return jsonify({"error": "Invalid eventId"}), 400
+
+    events = svc_get_my_events(email, selected_event)
     return jsonify(events), 200
 
 

@@ -246,6 +246,7 @@ footer{
     position: absolute;
     bottom: -200px;
     left: -20px;
+    z-index: 100;
 }
 .overlay .overlay-headline{
     display: flex;
@@ -581,6 +582,7 @@ footer{
     */
 }
 .section-body-event{
+    position: relative;
     width: 100%;
     height: 388px;
     border: 2px dashed var(--color-secondary);
@@ -747,6 +749,25 @@ label.ressource-input-wrapper{
     gap: var(--space);
     overflow: visible;
     flex-shrink: 0;
+}
+.section-body-event.tree-empty-mode .headline-grid,
+.section-body-event.tree-empty-mode .ressource-grid{
+    opacity: 0.2;
+}
+.tree-empty-overlay{
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(var(--space) * 2);
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 5;
+}
+.tree-empty-overlay p{
+    text-align: center;
+    opacity: 1;
 }
 .tree-resource-block{
     display: flex;
@@ -1071,6 +1092,8 @@ select.tree-cell-input{
     gap: var(--space);
 
     opacity: 0;
+
+    z-index: 50;
 }
 @keyframes messageBoxShow {
   0% { transform: translateY(100%); opacity: 0; }
@@ -1159,4 +1182,7 @@ select.tree-cell-input{
 }
 .person-selector-btn{
     flex: 1;
+}
+.section-placeholder{
+    width: 550px;
 }

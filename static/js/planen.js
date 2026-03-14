@@ -11,14 +11,49 @@ const scrollContainer = document.getElementById("section-body-event");
 const btnScrollLeft = document.getElementById("btnScrollLeft");
 const btnScrollRight = document.getElementById("btnScrollRight");
 
+const ARROW_LEFT_ACTIVE = "/static/assets/images/arrow-left-active.svg";
+const ARROW_LEFT_INACTIVE = "/static/assets/images/arrow-left-inactive.svg";
+const ARROW_RIGHT_ACTIVE = "/static/assets/images/arrow-right-active.svg";
+const ARROW_RIGHT_INACTIVE = "/static/assets/images/arrow-right-inactive.svg";
+
+function setTreeArrowState(button, isActive, activeSrc, inactiveSrc) {
+  if (!button) return;
+  button.src = isActive ? activeSrc : inactiveSrc;
+  button.classList.toggle("clickable", isActive);
+  button.style.pointerEvents = isActive ? "auto" : "none";
+  button.style.cursor = isActive ? "pointer" : "default";
+  button.setAttribute("aria-disabled", isActive ? "false" : "true");
+}
+
+function updateTreeScrollButtons() {
+  if (!scrollContainer) return;
+  const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+  const canScrollLeft = scrollContainer.scrollLeft > 1;
+  const canScrollRight = scrollContainer.scrollLeft < maxScrollLeft - 1;
+
+  setTreeArrowState(btnScrollLeft, canScrollLeft, ARROW_LEFT_ACTIVE, ARROW_LEFT_INACTIVE);
+  setTreeArrowState(btnScrollRight, canScrollRight, ARROW_RIGHT_ACTIVE, ARROW_RIGHT_INACTIVE);
+}
+
+if (scrollContainer) {
+  scrollContainer.addEventListener("scroll", updateTreeScrollButtons);
+  window.addEventListener("resize", updateTreeScrollButtons);
+}
+
 btnScrollLeft.addEventListener("click", (e) => {
   e.stopPropagation();
+  if (!scrollContainer || scrollContainer.scrollLeft <= 1) return;
   scrollContainer.scrollBy({ left: -250, behavior: "smooth" });
 });
 btnScrollRight.addEventListener("click", (e) => {
   e.stopPropagation();
+  if (!scrollContainer) return;
+  const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+  if (scrollContainer.scrollLeft >= maxScrollLeft - 1) return;
   scrollContainer.scrollBy({ left: 250, behavior: "smooth" });
 });
+
+updateTreeScrollButtons();
 
 expandTreeViewBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -70,6 +105,8 @@ expandTreeViewBtn.addEventListener("click", (e) => {
     iconExpandTreeView.src = "/static/assets/images/overlay-close.svg";
     sectionBodyEvent.classList.add('expanded');
   }
+
+  requestAnimationFrame(updateTreeScrollButtons);
 });
 createEventBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -121,31 +158,57 @@ window.addEventListener("eventSelected", async () => {
 async function deleteEvent() {
   const eventName = document.getElementById("inputEventNameDelete").value;
 
-  const response = await fetch("/api/events", {
-    method: "DELETE",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ eventName })
-  });
+  try {
+    const response = await fetch("/api/events", {
+      method: "DELETE",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ eventName })
+    });
 
-  const events = await response.json();
-  updateAllEventUI(events);
-  await refreshTreeView();
-  await refreshDropdowns();
+    if (!response.ok) {
+      const errData = await response.json().catch(() => null);
+      const errMsg = errData?.error || "Fehler beim Löschen des Events!";
+      showMessageBox("Fehler: " + errMsg);
+      return;
+    }
+
+    const events = await response.json();
+    updateAllEventUI(events);
+    await refreshTreeView();
+    await refreshDropdowns();
+    showMessageBox(`Event '${eventName}' gelöscht!`, "info");
+  } catch (err) {
+    console.error("[Delete Event] Fetch error:", err);
+    showMessageBox("Fehler beim Löschen des Events!");
+  }
 }
 
 async function createEvent() {
   const eventName = document.getElementById("inputEventName").value;
 
-  const response = await fetch("/api/events", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ eventName })
-  });
+  try {
+    const response = await fetch("/api/events", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ eventName })
+    });
 
-  const events = await response.json();
-  updateAllEventUI(events);
-  await refreshTreeView();
-  await refreshDropdowns();
+    if (!response.ok) {
+      const errData = await response.json().catch(() => null);
+      const errMsg = errData?.error || "Fehler beim Erstellen des Events!";
+      showMessageBox("Fehler: " + errMsg);
+      return;
+    }
+
+    const events = await response.json();
+    updateAllEventUI(events);
+    await refreshTreeView();
+    await refreshDropdowns();
+    showMessageBox(`Event '${eventName}' erstellt!`, "info");
+  } catch (err) {
+    console.error("[Create Event] Fetch error:", err);
+    showMessageBox("Fehler beim Erstellen des Events!");
+  }
 }
 
 // --- Ressource Dropdown & Tags ---
@@ -485,7 +548,7 @@ btnCreateRessource.addEventListener("click", async (e) => {
     });
 
     if (response.ok) {
-      showMessageBox(`Ressource '${resourceName}' erstellt!`);
+      showMessageBox(`Ressource '${resourceName}' erstellt!`, "info");
       document.getElementById("ressourceName").value = "";
       selectedGroups.clear();
       renderTags();
@@ -568,7 +631,7 @@ btnCreateAttribut.addEventListener("click", async (e) => {
     });
 
     if (response.ok) {
-      showMessageBox("Attribut erstellt!");
+      showMessageBox("Attribut erstellt!", "info");
       if (activeType === "eingabe") {
         document.getElementById("eingabeAttributName").value = "";
       }
@@ -592,11 +655,34 @@ btnCreateAttribut.addEventListener("click", async (e) => {
 
 let cachedTreeData = [];
 
+function renderSelectEventHint() {
+  const grid = document.querySelector(".section-body-event .ressource-grid");
+  const sectionBody = document.getElementById("section-body-event");
+  const headlineGrid = document.getElementById("headlineGrid");
+  if (!grid || !sectionBody) return;
+
+  grid.innerHTML = "";
+
+  sectionBody.style.setProperty("--tree-cols", 2);
+  sectionBody.classList.add("tree-empty-mode");
+
+  let overlay = sectionBody.querySelector(".tree-empty-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "tree-empty-overlay";
+    overlay.innerHTML = `<p class="text-bold">Bitte zuerst ein Event auswählen.</p>`;
+    sectionBody.appendChild(overlay);
+  }
+
+  if (headlineGrid) headlineGrid.querySelectorAll("p:not(.text-bold)").forEach((p) => p.remove());
+
+  requestAnimationFrame(updateTreeScrollButtons);
+}
+
 async function refreshTreeView() {
   const eventId = getCurrentEventId();
-  const grid = document.querySelector(".section-body-event .ressource-grid");
   if (!eventId) {
-    grid.innerHTML = "";
+    renderSelectEventHint();
     return;
   }
   try {
@@ -965,6 +1051,14 @@ async function openPersonSelector(resource, block) {
 
 function renderTreeView(resources, unlinkedEntities = []) {
   const grid = document.querySelector(".section-body-event .ressource-grid");
+  const sectionBody = document.getElementById('section-body-event');
+
+  if (sectionBody) {
+    sectionBody.classList.remove("tree-empty-mode");
+    const overlay = sectionBody.querySelector(".tree-empty-overlay");
+    if (overlay) overlay.remove();
+  }
+
   grid.innerHTML = "";
 
   // Calculate dynamic column count: 1 (resource name) + max attribute count
@@ -973,7 +1067,6 @@ function renderTreeView(resources, unlinkedEntities = []) {
   const totalCols = Math.max(maxAttrCount + 1, 2);
 
   // Update CSS custom property for grid columns
-  const sectionBody = document.getElementById('section-body-event');
   sectionBody.style.setProperty('--tree-cols', totalCols);
 
   // Update headline grid: rebuild Ebene labels dynamically
@@ -1214,6 +1307,8 @@ function renderTreeView(resources, unlinkedEntities = []) {
     block.appendChild(entriesContainer);
     grid.appendChild(block);
   });
+
+  requestAnimationFrame(updateTreeScrollButtons);
 }
 
 
@@ -1600,7 +1695,7 @@ document.getElementById('btnDeleteRessource').addEventListener('click', async (e
       showMessageBox('Fehler: ' + (err?.error || 'Löschen fehlgeschlagen'));
       return;
     }
-    showMessageBox(`Ressource '${editingResource.entity_type}' gelöscht!`);
+    showMessageBox(`Ressource '${editingResource.entity_type}' gelöscht!`, "info");
     exitEditMode();
     await refreshTreeView();
     await refreshDropdowns();
@@ -1653,7 +1748,7 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
         return;
       }
     }
-    showMessageBox(`Attribut '${newName}' aktualisiert!`);
+    showMessageBox(`Attribut '${newName}' aktualisiert!`, "info");
     exitEditMode();
     await refreshTreeView();
     await refreshDropdowns();
@@ -1684,7 +1779,7 @@ document.getElementById('btnDeleteAttribut').addEventListener('click', async (e)
       showMessageBox('Fehler: ' + (err?.error || 'Löschen fehlgeschlagen'));
       return;
     }
-    showMessageBox(`Attribut '${editingAttribute.name}' gelöscht!`);
+    showMessageBox(`Attribut '${editingAttribute.name}' gelöscht!`, "info");
     exitEditMode();
     await refreshTreeView();
     await refreshDropdowns();

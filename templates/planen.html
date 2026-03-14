@@ -78,10 +78,6 @@
                     <h2 id="eventCreatedAt">N/A</h2>
                 </div>
                 <div>
-                    <p>Dauer</p>
-                    <h2 id="eventDuration">N/A</h2>
-                </div>
-                <div>
                     <div id="btnDeleteEvent" class="button-red clickable">
                         <div>
                             <p>Löschen</p>
@@ -93,7 +89,19 @@
                 </div>
             </div>
         </section>
-
+        <section class="section-placeholder">
+            <div class="section-head">
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/info-square.svg') }}" alt="Info Square Icon">
+                    <h3>Platzhalter</h3>
+                </div>
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/gear.svg') }}" alt="Gear Icon">
+                </div>
+            </div>
+            <div class="section-body-placeholder">
+                <p class="text-bold">Hier ist noch Platz!</p>
+            </div>
     </article>
     <article>
         <section class="section-ressourcen">

@@ -301,7 +301,7 @@ def get_user_id_by_email(email: str):
     return queries.get_user_id_by_email(email)
 
 
-def get_my_events(user_email: str) -> dict:
+def get_my_events(user_email: str, selected_event=None) -> dict:
     user_id = queries.get_user_id_by_email(user_email)
     if user_id is None:
         return {"current_event": None, "all_events": []}
@@ -312,10 +312,28 @@ def get_my_events(user_email: str) -> dict:
     my_stats = [r for r in all_stats if r['event_instance_id'] in set(event_ids)]
     if not my_stats:
         return {"current_event": None, "all_events": []}
-    all_events_list = [{"id": r['event_instance_id'], "name": r['event_name']} for r in my_stats]
-    first = my_stats[0]
-    attrs = queries.get_event_instance_attributes(first['event_instance_id'])
-    current_event = _format_current_event(first, attrs)
+
+    all_events_list = [{"id": None, "name": "Alle Events"}] + [
+        {"id": r['event_instance_id'], "name": r['event_name']} for r in my_stats
+    ]
+
+    if selected_event == "all" or selected_event is None:
+        current_event = {
+            "id": None,
+            "name": "Alle Events",
+            "created_at": "",
+            "duration": "",
+            "messages": [],
+            "statistics": _sum_stats(my_stats),
+        }
+    elif isinstance(selected_event, int):
+        current_row = next(
+            (r for r in my_stats if r['event_instance_id'] == selected_event),
+            my_stats[0]
+        )
+        attrs = queries.get_event_instance_attributes(current_row['event_instance_id'])
+        current_event = _format_current_event(current_row, attrs)
+
     return {"current_event": current_event, "all_events": all_events_list}
 
 

@@ -7,14 +7,49 @@ const scrollContainer = document.getElementById("section-body-event");
 const btnScrollLeft = document.getElementById("btnScrollLeft");
 const btnScrollRight = document.getElementById("btnScrollRight");
 
+const ARROW_LEFT_ACTIVE = "/static/assets/images/arrow-left-active.svg";
+const ARROW_LEFT_INACTIVE = "/static/assets/images/arrow-left-inactive.svg";
+const ARROW_RIGHT_ACTIVE = "/static/assets/images/arrow-right-active.svg";
+const ARROW_RIGHT_INACTIVE = "/static/assets/images/arrow-right-inactive.svg";
+
+function setTreeArrowState(button, isActive, activeSrc, inactiveSrc) {
+    if (!button) return;
+    button.src = isActive ? activeSrc : inactiveSrc;
+    button.classList.toggle("clickable", isActive);
+    button.style.pointerEvents = isActive ? "auto" : "none";
+    button.style.cursor = isActive ? "pointer" : "default";
+    button.setAttribute("aria-disabled", isActive ? "false" : "true");
+}
+
+function updateTreeScrollButtons() {
+    if (!scrollContainer) return;
+    const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+    const canScrollLeft = scrollContainer.scrollLeft > 1;
+    const canScrollRight = scrollContainer.scrollLeft < maxScrollLeft - 1;
+
+    setTreeArrowState(btnScrollLeft, canScrollLeft, ARROW_LEFT_ACTIVE, ARROW_LEFT_INACTIVE);
+    setTreeArrowState(btnScrollRight, canScrollRight, ARROW_RIGHT_ACTIVE, ARROW_RIGHT_INACTIVE);
+}
+
+if (scrollContainer) {
+    scrollContainer.addEventListener("scroll", updateTreeScrollButtons);
+    window.addEventListener("resize", updateTreeScrollButtons);
+}
+
 btnScrollLeft.addEventListener("click", (e) => {
   e.stopPropagation();
+    if (!scrollContainer || scrollContainer.scrollLeft <= 1) return;
   scrollContainer.scrollBy({ left: -250, behavior: "smooth" });
 });
 btnScrollRight.addEventListener("click", (e) => {
   e.stopPropagation();
+    if (!scrollContainer) return;
+    const maxScrollLeft = Math.max(scrollContainer.scrollWidth - scrollContainer.clientWidth, 0);
+    if (scrollContainer.scrollLeft >= maxScrollLeft - 1) return;
   scrollContainer.scrollBy({ left: 250, behavior: "smooth" });
 });
+
+updateTreeScrollButtons();
 
 // =========================================================================
 // Initialisation
@@ -22,35 +57,29 @@ btnScrollRight.addEventListener("click", (e) => {
 document.addEventListener('DOMContentLoaded', async function () {
     const events = await loadMyEvents();
     if (!events || !events.current_event) return;
-
-    window._currentEventId = events.current_event.id;
-    updateTreeViewHeading(events.current_event.name);
-    updateEventDropdown(events.all_events);
-    if (events.current_event.statistics) {
-        updateInteractionStatistics(events.current_event.statistics);
-        updateInteractionTree(
-            events.current_event.statistics["required-fields"],
-            events.current_event.statistics["required-remaining"]
-        );
-    }
-    if (events.current_event.id) {
-        await refreshParticipantTree(events.current_event.id);
-    }
+    await applyParticipantEventState(events);
 });
 
-// Refresh tree when an event is selected from the dropdown
-window.addEventListener("eventSelected", async () => {
-    const eventId = window._currentEventId;
-    if (!eventId) return;
-    await refreshParticipantTree(eventId);
+// Participant-specific dropdown selection handler from main.js
+window.addEventListener("participantEventSelected", async (e) => {
+    const selectedEventId = e.detail?.eventId;
+    const events = await loadMyEvents(selectedEventId);
+    if (!events || !events.current_event) return;
+    await applyParticipantEventState(events);
 });
 
 // =========================================================================
 // Data loading
 // =========================================================================
-async function loadMyEvents() {
+async function loadMyEvents(selectedEventId = undefined) {
     try {
-        const res = await fetch('/api/my-events');
+        let url = '/api/my-events';
+        if (selectedEventId === null) {
+            url += '?eventId=all';
+        } else if (selectedEventId !== undefined) {
+            url += `?eventId=${encodeURIComponent(String(selectedEventId))}`;
+        }
+        const res = await fetch(url);
         return await res.json();
     } catch (err) {
         console.error('Fehler beim Laden der eigenen Events:', err);
@@ -58,9 +87,31 @@ async function loadMyEvents() {
     }
 }
 
+async function applyParticipantEventState(events) {
+    window._currentEventId = events.current_event.id;
+    updateTreeViewHeading(events.current_event.name);
+    updateEventDropdown(events.all_events);
+
+    const dropdownSelectedItem = document.getElementById("dropdownSelectedItem");
+    if (dropdownSelectedItem) {
+        dropdownSelectedItem.textContent = events.current_event.name || "Alle Events";
+    }
+
+    if (events.current_event.statistics) {
+        updateInteractionStatistics(events.current_event.statistics);
+        updateInteractionTree(
+            events.current_event.statistics["required-fields"],
+            events.current_event.statistics["required-remaining"]
+        );
+    }
+    await refreshParticipantTree(events.current_event.id);
+}
+
 async function refreshParticipantTree(eventId) {
-    const grid = document.querySelector(".section-body-event .ressource-grid");
-    if (!eventId) { grid.innerHTML = ""; return; }
+    if (!eventId) {
+        renderSelectEventHint();
+        return;
+    }
     try {
         const tree = await fetch(`/api/resources/${eventId}/participant-tree`).then(r => r.json());
         renderParticipantTree(tree);
@@ -73,6 +124,30 @@ async function refreshParticipantTree(eventId) {
 // Tree view rendering (participant view)
 // =========================================================================
 let cachedParticipantTree = [];
+
+function renderSelectEventHint() {
+    const grid = document.querySelector(".section-body-event .ressource-grid");
+    const sectionBody = document.getElementById("section-body-event");
+    const headlineGrid = document.getElementById("headlineGrid");
+    if (!grid || !sectionBody) return;
+
+    grid.innerHTML = "";
+
+    sectionBody.style.setProperty("--tree-cols", 2);
+    sectionBody.classList.add("tree-empty-mode");
+
+    let overlay = sectionBody.querySelector(".tree-empty-overlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.className = "tree-empty-overlay";
+        overlay.innerHTML = `<p class="text-bold">Bitte zuerst ein Event auswählen.</p>`;
+        sectionBody.appendChild(overlay);
+    }
+
+    if (headlineGrid) headlineGrid.querySelectorAll("p:not(.text-bold)").forEach((p) => p.remove());
+
+    requestAnimationFrame(updateTreeScrollButtons);
+}
 
 function updateTreeViewHeading(name) {
     const el = document.getElementById("treeViewEventName");
@@ -92,13 +167,20 @@ function formatDisplayValue(val, datatype) {
 function renderParticipantTree(resources) {
     cachedParticipantTree = resources;
     const grid = document.querySelector(".section-body-event .ressource-grid");
+    const sectionBody = document.getElementById('section-body-event');
+
+    if (sectionBody) {
+        sectionBody.classList.remove("tree-empty-mode");
+        const overlay = sectionBody.querySelector(".tree-empty-overlay");
+        if (overlay) overlay.remove();
+    }
+
     grid.innerHTML = "";
 
     let maxAttrCount = 0;
     resources.forEach(r => { if (r.attributes.length > maxAttrCount) maxAttrCount = r.attributes.length; });
     const totalCols = Math.max(maxAttrCount + 1, 2);
 
-    const sectionBody = document.getElementById('section-body-event');
     sectionBody.style.setProperty('--tree-cols', totalCols);
 
     // Rebuild headline labels
@@ -186,6 +268,8 @@ function renderParticipantTree(resources) {
         block.appendChild(entriesContainer);
         grid.appendChild(block);
     });
+
+    requestAnimationFrame(updateTreeScrollButtons);
 }
 
 // =========================================================================
