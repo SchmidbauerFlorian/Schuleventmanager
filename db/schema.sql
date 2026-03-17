@@ -26,6 +26,7 @@ DROP TABLE IF EXISTS t_datatype;
 DROP TABLE IF EXISTS t_entity;
 DROP TABLE IF EXISTS t_user_preferences;
 DROP TABLE IF EXISTS t_preferences;
+DROP TABLE IF EXISTS t_class_filter;
 DROP TABLE IF EXISTS t_users;
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -197,13 +198,21 @@ CREATE INDEX idx_relation_values_instance ON t_relation_values(relation_instance
 -- Description: Stores user information from Microsoft Graph API
 -- ============================================================================
 CREATE TABLE t_users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Internal unique identifier for user',
+    uid VARCHAR(255) PRIMARY KEY COMMENT 'Unique user id from MS Graph',
     display_name VARCHAR(255) COMMENT 'Full display name from MS Graph',
     email VARCHAR(255) COMMENT 'Primary email / UPN from MS Graph',
     job_title VARCHAR(255) COMMENT 'Job title from MS Graph'
 ) COMMENT='Stores user accounts sourced from Microsoft Graph API';
 
 CREATE INDEX idx_users_email ON t_users(email);
+
+-- ============================================================================
+-- Table: t_class_filter
+-- Description: Stores normalized class list used for class_filter selections
+-- ============================================================================
+CREATE TABLE t_class_filter (
+    class_name VARCHAR(255) PRIMARY KEY COMMENT 'Class value derived from t_users.job_title'
+) COMMENT='Persisted class list derived from users for class filtering';
 
 -- ============================================================================
 -- Table: t_preferences
@@ -219,14 +228,14 @@ CREATE TABLE t_preferences (
 -- Description: Links users to their preference set (1:1)
 -- ============================================================================
 CREATE TABLE t_user_preferences (
-    user_id INT NOT NULL COMMENT 'Foreign key referencing user',
+    uid VARCHAR(255) NOT NULL COMMENT 'Foreign key referencing user',
     preference_id INT NOT NULL COMMENT 'Foreign key referencing preference set',
     
-    PRIMARY KEY (user_id),
+    PRIMARY KEY (uid),
     
     CONSTRAINT fk_userprefs_user
-        FOREIGN KEY (user_id)
-        REFERENCES t_users(user_id)
+        FOREIGN KEY (uid)
+        REFERENCES t_users(uid)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     
@@ -1089,7 +1098,7 @@ CREATE OR REPLACE PROCEDURE create_entity_instances_from_users(
 )
 BEGIN
     DECLARE v_done INT DEFAULT FALSE;
-    DECLARE v_user_id INT;
+    DECLARE v_uid VARCHAR(255);
     DECLARE v_display_name VARCHAR(255);
     DECLARE v_email VARCHAR(255);
     DECLARE v_job_title VARCHAR(255);
@@ -1100,12 +1109,12 @@ BEGIN
     DECLARE v_target_entity VARCHAR(255);
 
     DECLARE cur_users CURSOR FOR
-        SELECT user_id, display_name, email, job_title FROM t_users;
+        SELECT uid, display_name, email, job_title FROM t_users;
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = TRUE;
 
     OPEN cur_users;
     user_loop: LOOP
-        FETCH cur_users INTO v_user_id, v_display_name, v_email, v_job_title;
+        FETCH cur_users INTO v_uid, v_display_name, v_email, v_job_title;
         IF v_done THEN LEAVE user_loop; END IF;
 
         -- Bestimme ob Lehrer oder Schüler
@@ -1153,13 +1162,13 @@ BEGIN
             CALL create_entity_instance(
                 'Teacher',
                 'name,email,uid,Teacher_id',
-                CONCAT(v_display_name, ',', v_email, ',', v_user_id, ',', v_user_id)
+                CONCAT(v_display_name, ',', v_email, ',', v_uid, ',', v_uid)
             );
         ELSE
             CALL create_entity_instance(
                 'Student',
                 'name,email,class,uid,Student_id',
-                CONCAT(v_display_name, ',', v_email, ',', v_class, ',', v_user_id, ',', v_user_id)
+                CONCAT(v_display_name, ',', v_email, ',', v_class, ',', v_uid, ',', v_uid)
             );
         END IF;
     END LOOP;
@@ -1203,198 +1212,10 @@ TRUNCATE TABLE t_attribute;
 TRUNCATE TABLE t_entity;
 TRUNCATE TABLE t_user_preferences;
 TRUNCATE TABLE t_preferences;
+TRUNCATE TABLE t_class_filter;
 TRUNCATE TABLE t_users;
 DROP SEQUENCE IF EXISTS seq_entity_instance_id;
 DROP SEQUENCE IF EXISTS seq_relation_instance_id;
 CREATE SEQUENCE seq_entity_instance_id;
 CREATE SEQUENCE seq_relation_instance_id;
 SET FOREIGN_KEY_CHECKS = 1;
-
-
-SELECT '--- 1. INSERT USERS (MS Graph) ---' AS Step;
-INSERT INTO t_users (display_name, email, job_title) VALUES
-    ('Max Mustermann',  'mm@htlwy.com',    '5AHIT'),
-    ('Anna Musterfrau', 'am@htlwy.com',    '2AHIT'),
-    ('Mr. Smith',       'smith@htlwy.com', '');
-
--- ---------------------------------------------------------------------------
--- 2. PREFERENCES
--- ---------------------------------------------------------------------------
-SELECT '--- 2. INSERT PREFERENCES ---' AS Step;
-INSERT INTO t_preferences (theme) VALUES
-    ('dark'),   -- preference_id = 1 (Max)
-    ('light'),  -- preference_id = 2 (Anna)
-    ('light');  -- preference_id = 3 (Smith)
-
--- ---------------------------------------------------------------------------
--- 3. USER <-> PREFERENCES (1:1)
--- ---------------------------------------------------------------------------
-SELECT '--- 3. LINK USERS TO PREFERENCES ---' AS Step;
-INSERT INTO t_user_preferences (user_id, preference_id) VALUES
-    (1, 1),  -- Max   -> dark/de
-    (2, 2),  -- Anna  -> light/de
-    (3, 3);  -- Smith -> light/en
-
-
-/*
--- ---------------------------------------------------------------------------
--- 4. ENTITY TYPES
--- ---------------------------------------------------------------------------
-SELECT '--- 4. CREATE ENTITY TYPES ---' AS Step;
--- create_entity_with_attributes(type, attributes, datatypes, isEvent, isRequired_flags)
--- All entity attributes are automatically isListRessource=TRUE (and isPersonRessource=TRUE for Student/Teacher)
---   Student: name(required), email(required), class, uid
-CALL create_entity_with_attributes('Student', 'name,email,class,uid',    'VARCHAR,VARCHAR,VARCHAR,INTEGER', FALSE, '1,1,0,0');
---   Event: name(required), date(required), location
---   CALL create_entity_with_attributes('Event',   'name,date,location',      'VARCHAR,DATE,VARCHAR',            TRUE,  '1,1,0');
---   Teacher: name(required), email(required), uid
-CALL create_entity_with_attributes('Teacher', 'name,email,uid',          'VARCHAR,VARCHAR,INTEGER',         FALSE, '1,1,0');
---   Room: name(required), capacity
-CALL create_entity_with_attributes('Room',    'name,capacity',           'VARCHAR,INTEGER',                 FALSE, '1,0');
-
--- ---------------------------------------------------------------------------
--- 5. ENTITY INSTANCES
--- ---------------------------------------------------------------------------
-SELECT '--- 5. CREATE ENTITY INSTANCES ---' AS Step;
---                                                          entity_instance_id (seq):
--- Students
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Max Mustermann,mm@htlwy.com,5AHIT,1,1');   -- 1
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Anna Musterfrau,am@htlwy.com,5AHIT,2,2');  -- 2
-CALL create_entity_instance('Student', 'name,email,class,uid,Student_id', 'Lukas Huber,lh@htlwy.com,4BHIT,,3');       -- 3
--- Events
-
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Skikurs,2026-03-01,Saalbach,1');               -- 4
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Science Fair,2025-06-20,School Hall,2');        -- 5
-CALL create_entity_instance('Event',   'name,date,location,Event_id', 'Tag der offenen Tuer,2026-04-15,HTL Wels,3');  -- 6
-
--- Teachers
-CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Mr. Smith,smith@htlwy.com,3,1');                  -- 7
-CALL create_entity_instance('Teacher', 'name,email,uid,Teacher_id', 'Frau Huber,huber@htlwy.com,,2');                  -- 8
--- Rooms
-CALL create_entity_instance('Room',    'name,capacity,Room_id', 'Aula,200,1');                                         -- 9
-CALL create_entity_instance('Room',    'name,capacity,Room_id', 'EDV-Saal 1,30,2');                                    -- 10
-
--- ---------------------------------------------------------------------------
--- 6. RELATION DEFINITIONS
--- ---------------------------------------------------------------------------
-
-SELECT '--- 6. DEFINE RELATIONS ---' AS Step;
--- add_relation_attribute(relation_id, name, datatype, isInputField, isRequired, isSingularRessource, expirationDate)
-
--- relation_id=1: participates_in
-CALL create_relation('participates_in', 'm:n', 'Student participates in Event', @_);
-CALL add_relation_participant(1, 'Student', 0, 15);
-CALL add_relation_participant(1, 'Event',   0, NULL);
--- reg_date: isInputField=TRUE, isRequired=TRUE, expires 2026-06-30
-CALL add_relation_attribute(1, 'reg_date', 'DATE', TRUE, TRUE, FALSE, '2026-06-30');
--- nimmtTeil: isInputField=TRUE, not required, not singular, no expiration
-CALL add_relation_attribute(1, 'nimmtTeil', 'BOOLEAN', TRUE, FALSE, FALSE, NULL);
-
--- relation_id=2: organizes
-CALL create_relation('organizes', '1:n', 'Teacher organizes Event', @_);
-CALL add_relation_participant(2, 'Teacher', 1, 1);
-CALL add_relation_participant(2, 'Event',   0, NULL);
--- hours: isInputField=TRUE, not required, not singular
-CALL add_relation_attribute(2, 'hours', 'INTEGER', TRUE, FALSE, FALSE, NULL);
-
--- relation_id=3: takes_place_in
-CALL create_relation('takes_place_in', '1:n', 'Event takes place in Room', @_);
-CALL add_relation_participant(3, 'Event', 0, NULL);
-CALL add_relation_participant(3, 'Room',  0, NULL);
--- room_note: isInputField, isSingularRessource (only one room per event), required, expires 2026-12-31
-CALL add_relation_attribute(3, 'room_note', 'VARCHAR', TRUE, TRUE, TRUE, '2026-12-31');
-
--- ---------------------------------------------------------------------------
--- 7. RELATION INSTANCES
--- ---------------------------------------------------------------------------
--- value_id mapping (t_values):
---   Student_id: Max=1,  Anna=6,  Lukas=11
---   Event_id:   Skikurs=16, ScienceFair=20, TdoT=24
---   Teacher_id: Smith=28, Huber=32
---   Room_id:    Aula=36, EDV-Saal1=39
---   (value_ids 42–56 created below in insertion order)
-SELECT '--- 7. CREATE RELATION INSTANCES ---' AS Step;
-
--- participates_in: Max -> Skikurs        (reg_date=2025-12-25, nimmtTeil=1)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-12-25', @_);    -- 42
-CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 43
-CALL create_relation_instance(1, '1,16,42,43', @_);
-
--- participates_in: Anna -> Skikurs       (reg_date=2026-01-15, nimmtTeil=1)
-CALL create_relation_attribute_value(1, 'reg_date', '2026-01-15', @_);    -- 44
-CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 45
-CALL create_relation_instance(1, '6,16,44,45', @_);
-
--- participates_in: Max -> Science Fair   (reg_date=2025-05-10, nimmtTeil=1)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-05-10', @_);    -- 46
-CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 47
-CALL create_relation_instance(1, '1,20,46,47', @_);
-
--- participates_in: Lukas -> Science Fair (reg_date=2025-05-12, nimmtTeil=0 -> nimmt nicht teil)
-CALL create_relation_attribute_value(1, 'reg_date', '2025-05-12', @_);    -- 48
-CALL create_relation_attribute_value(1, 'nimmtTeil', '0', @_);            -- 49
-CALL create_relation_instance(1, '11,20,48,49', @_);
-
--- participates_in: Anna -> TdoT         (reg_date=2026-03-20, nimmtTeil=1)
-CALL create_relation_attribute_value(1, 'reg_date', '2026-03-20', @_);    -- 50
-CALL create_relation_attribute_value(1, 'nimmtTeil', '1', @_);            -- 51
-CALL create_relation_instance(1, '6,24,50,51', @_);
-
--- organizes: Smith -> Science Fair       (hours=10)
-CALL create_relation_attribute_value(2, 'hours', '10', @_);               -- 52
-CALL create_relation_instance(2, '28,20,52', @_);
-
--- organizes: Huber -> TdoT              (hours=6)
-CALL create_relation_attribute_value(2, 'hours', '6', @_);                -- 53
-CALL create_relation_instance(2, '32,24,53', @_);
-
--- takes_place_in: Skikurs -> Aula           (room_note)
-CALL create_relation_attribute_value(3, 'room_note', 'Hauptsaal reserviert', @_);  -- 54
-CALL create_relation_instance(3, '16,36,54', @_);
-
--- takes_place_in: Science Fair -> Aula       (room_note)
-CALL create_relation_attribute_value(3, 'room_note', 'Bühne benötigt', @_);        -- 55
-CALL create_relation_instance(3, '20,36,55', @_);
-
--- takes_place_in: TdoT -> EDV-Saal 1        (room_note)
-CALL create_relation_attribute_value(3, 'room_note', '', @_);                       -- 56
-CALL create_relation_instance(3, '24,39,56', @_);
-
-SELECT '--- FILL_DB COMPLETED ---' AS Message;
-
-
--- ============================================================================
--- TEST: create_entity_instances_from_users
--- Requires Entity-Types 'Student' and 'Teacher' to already exist (see Part 3 above)
--- ============================================================================
-
--- Insert test users into t_users
-INSERT INTO t_users (display_name, email, job_title) VALUES
-    ('Elena Fischer',   'ef@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
-    ('Jonas Weber',     'jw@htlwy.com',     '4BHIT'),    -- Student in 4BHIT
-    ('Maria Gruber',    'mg@htlwy.com',     '5AHIT'),    -- Student in 5AHIT
-    ('Dr. Berger',      'berger@htlwy.com',  'Teacher'),  -- Teacher
-    ('Prof. Lang',      'lang@htlwy.com',    NULL);       -- Teacher (job_title NULL)
-
--- ---------------------------------------------------------------------------
--- Testaufruf 1: Nur Schüler der Klasse 5AHIT importieren
---   Erwartet: Elena Fischer und Maria Gruber werden als Student-Instanzen erstellt
--- ---------------------------------------------------------------------------
--- CALL create_entity_instances_from_users('5AHIT', NULL);
-
--- ---------------------------------------------------------------------------
--- Testaufruf 2: Nur Lehrer importieren, gefiltert nach Name 'Berger'
---   Erwartet: Nur Dr. Berger wird als Teacher-Instanz erstellt
--- ---------------------------------------------------------------------------
--- CALL create_entity_instances_from_users('Teacher', 'Berger');
-
--- ---------------------------------------------------------------------------
--- Testaufruf 3: Alle User ohne Filter importieren
---   Erwartet: Alle 5 User werden als Instanzen erstellt (3 Students, 2 Teachers)
---   ACHTUNG: Vorherige Aufrufe ggf. vorher rückgängig machen, um Duplikate zu vermeiden
--- ---------------------------------------------------------------------------
--- CALL create_entity_instances_from_users(NULL, NULL);
-
--- Test: create_attribute with isRequired=TRUE (isListRessource is always TRUE for entity attributes)
--- CALL create_attribute('Student', 'phone', 'VARCHAR', TRUE);
-*/

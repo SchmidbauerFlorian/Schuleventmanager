@@ -721,6 +721,16 @@ label.ressource-input-wrapper{
 .ressource-dropdown-wrapper .dropdown-container{
     z-index: 20;
 }
+.personen-sync-btn{
+    width: 14px;
+    height: 14px;
+    opacity: 0.8;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.personen-sync-btn:hover{
+    opacity: 1;
+    transform: scale(1.08);
+}
 #personenDropdown{
     display: none;
     z-index: 10;

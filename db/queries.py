@@ -79,12 +79,37 @@ def create_event_by_name(eventtype: str, name: str) -> int:
 #  delete_entity_type (p_entity_type TEXT) — cascades attributes + values
 def delete_event_by_name(event_type: str) -> int:
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("CALL delete_entity_type(?)", (event_type,))
-    conn.commit()
-    affected = cur.rowcount
-    conn.close()
-    return affected
+    try:
+        cur = conn.cursor()
+
+        # Remove all relations where this event entity type is a participant.
+        # This guarantees no event-specific relation remains after deleting the event.
+        cur.execute(
+            """DELETE r
+               FROM t_relation r
+               WHERE EXISTS (
+                   SELECT 1
+                   FROM t_relation_participant rp
+                   JOIN t_attribute a ON rp.fk_att_id = a.attribute_id
+                   JOIN t_entity e ON a.fk_entity_id = e.entity_id
+                   WHERE rp.fk_relation_id = r.relation_id
+                     AND e.isEvent = TRUE
+                     AND e.entity_type = ?
+               )""",
+            (event_type,),
+        )
+
+        # Delete the event entity type itself (cascades attributes + values).
+        cur.execute("CALL delete_entity_type(?)", (event_type,))
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        return affected
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def create_selected_from_users_table(filter_class: str, filter_name: str):
     conn = get_connection()
@@ -95,15 +120,79 @@ def create_selected_from_users_table(filter_class: str, filter_name: str):
     return rows
 
 
+def _refresh_class_filter(cur):
+        """Rebuild class_filter list from current t_users job_title values."""
+        cur.execute("DELETE FROM t_class_filter")
+        cur.execute(
+                """INSERT INTO t_class_filter (class_name)
+                     SELECT DISTINCT TRIM(job_title) AS class_name
+                     FROM t_users
+                     WHERE job_title IS NOT NULL
+                         AND TRIM(job_title) != ''
+                         AND LOWER(TRIM(job_title)) != 'teacher'
+                     ORDER BY class_name"""
+        )
+
+
+def upsert_users(graph_users: list):
+    """Upsert users from Microsoft Graph into t_users using uid as primary key."""
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+
+    def ci_get(payload, *keys):
+        if not isinstance(payload, dict):
+            return None
+        lowered = {str(k).lower(): v for k, v in payload.items()}
+        for key in keys:
+            val = lowered.get(str(key).lower())
+            if val is not None:
+                return val
+        return None
+
+    try:
+        for user in graph_users:
+            uid = (ci_get(user, 'id') or '').strip()
+            display_name = (ci_get(user, 'displayName') or '').strip() or None
+            email = (ci_get(user, 'mail', 'userPrincipalName') or '').strip() or None
+            job_title = (ci_get(user, 'jobTitle') or '').strip() or None
+
+            if not uid:
+                continue
+
+            cur.execute("SELECT uid FROM t_users WHERE uid = ? LIMIT 1", (uid,))
+
+            existing = cur.fetchone()
+            if existing:
+                cur.execute(
+                    """UPDATE t_users
+                       SET display_name = COALESCE(?, display_name),
+                           email = COALESCE(?, email),
+                           job_title = COALESCE(?, job_title)
+                       WHERE uid = ?""",
+                    (display_name, email, job_title, existing['uid']),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO t_users (uid, display_name, email, job_title) VALUES (?, ?, ?, ?)",
+                    (uid, display_name, email, job_title),
+                )
+
+        _refresh_class_filter(cur)
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_users(query: str = None):
     """Fetch users from t_users, searching by display_name or email."""
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
-    sql = "SELECT user_id, display_name, email, job_title FROM t_users WHERE 1=1"
+    sql = "SELECT uid AS user_id, display_name, email, job_title FROM t_users WHERE 1=1"
     params = []
     if query:
-        sql += " AND (LOWER(display_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))"
-        params.extend([f"%{query}%", f"%{query}%"])
+        sql += " AND (LOWER(display_name) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) OR LOWER(job_title) LIKE LOWER(?))"
+        params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
     sql += " ORDER BY display_name LIMIT 50"
     cur.execute(sql, tuple(params))
     rows = cur.fetchall()
@@ -112,16 +201,21 @@ def get_users(query: str = None):
 
 
 def get_user_classes():
-    """Fetch distinct class values (job_title) from t_users."""
+    """Fetch classes from persisted class filter list."""
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
-    cur.execute("""
-        SELECT DISTINCT job_title
-        FROM t_users
-        WHERE job_title IS NOT NULL AND LOWER(job_title) != 'teacher'
-        ORDER BY job_title
-    """)
-    classes = [row['job_title'] for row in cur.fetchall()]
+    try:
+        cur.execute("SELECT class_name FROM t_class_filter ORDER BY class_name")
+        classes = [row['class_name'] for row in cur.fetchall()]
+    except Exception:
+        # Backward-compatible fallback if table doesn't exist yet.
+        cur.execute("""
+            SELECT DISTINCT job_title
+            FROM t_users
+            WHERE job_title IS NOT NULL AND LOWER(job_title) != 'teacher'
+            ORDER BY job_title
+        """)
+        classes = [row['job_title'] for row in cur.fetchall()]
     conn.close()
     return classes
 
@@ -428,7 +522,7 @@ def create_resource_for_event(resource_name: str, user_ids: list, class_groups: 
             if has_persons:
                 cur1b.execute(
                     "CALL create_entity_with_attributes(?, ?, ?, FALSE, ?)",
-                    (resource_name, "uid", "INTEGER", ""),
+                    (resource_name, "uid", "VARCHAR", ""),
                 )
             else:
                 cur1b.execute(
@@ -448,22 +542,22 @@ def create_resource_for_event(resource_name: str, user_ids: list, class_groups: 
             )
             cur_p.close()
 
-            # Collect all user_ids to import (from direct picks + class groups)
-            all_uids = set(int(u) for u in user_ids)
+            # Collect all user uids to import (from direct picks + class groups)
+            all_uids = {str(u) for u in user_ids if u is not None and str(u).strip() != ''}
 
             for cls in class_groups:
                 cur_c = conn.cursor(dictionary=True)
                 if cls.lower() == 'teacher':
                     cur_c.execute(
-                        "SELECT user_id FROM t_users WHERE job_title IS NULL OR LOWER(job_title) = 'teacher'"
+                        "SELECT uid FROM t_users WHERE job_title IS NULL OR LOWER(job_title) = 'teacher'"
                     )
                 else:
                     cur_c.execute(
-                        "SELECT user_id FROM t_users WHERE LOWER(job_title) = LOWER(?)",
+                        "SELECT uid FROM t_users WHERE LOWER(job_title) = LOWER(?)",
                         (cls,),
                     )
                 for row in cur_c.fetchall():
-                    all_uids.add(row['user_id'])
+                    all_uids.add(str(row['uid']))
                 cur_c.close()
 
             # Import each user
@@ -735,7 +829,7 @@ def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
             eid = inst['entity_instance_id']
             riid = inst['relation_instance_id']
 
-            # Get entity PK value (stored as user_id during import)
+            # Get entity PK value (stored as user uid during import)
             cur5 = conn.cursor(dictionary=True)
             cur5.execute(
                 """SELECT v.value FROM t_values v
@@ -752,8 +846,8 @@ def add_api_attribute_to_resource(entity_id: int, attribute_name: str,
             # Look up t_users
             cur6 = conn.cursor(dictionary=True)
             cur6.execute(
-                "SELECT display_name, email, job_title FROM t_users WHERE user_id = ?",
-                (int(pk_row['value']),),
+                "SELECT display_name, email, job_title FROM t_users WHERE uid = ?",
+                (str(pk_row['value']),),
             )
             user_row = cur6.fetchone()
             cur6.close()
@@ -1665,11 +1759,11 @@ def link_existing_entity_to_event(entity_id: int, event_instance_id: int):
 def get_user_id_by_email(email: str):
     conn = get_connection()
     cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT user_id FROM t_users WHERE LOWER(email) = LOWER(?)", (email,))
+    cur.execute("SELECT uid FROM t_users WHERE LOWER(email) = LOWER(?)", (email,))
     row = cur.fetchone()
     cur.close()
     conn.close()
-    return row['user_id'] if row else None
+    return row['uid'] if row else None
 
 
 def get_events_for_participant(user_id: int):

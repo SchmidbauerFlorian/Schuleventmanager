@@ -243,8 +243,9 @@ async function createEvent() {
 const personenDropdownBtn = document.getElementById("personenDropdownBtn");
 const personenDropdown = document.getElementById("personenDropdown");
 const personenSearch = document.getElementById("personenSearch");
+const personenSyncBtn = document.getElementById("personenSyncBtn");
 const selectedGroupsContainer = document.getElementById("selectedGroups");
-const selectedUsers = new Map(); // user_id -> { user_id, display_name, email }
+const selectedUsers = new Map(); // uid -> { user_id, display_name, email }
 const selectedClasses = new Set(); // class name strings like "5AHIT"
 // Compat shim used by exitEditMode / success handler
 const selectedGroups = { clear() { selectedUsers.clear(); selectedClasses.clear(); } };
@@ -278,6 +279,35 @@ personenSearch.addEventListener("click", (e) => {
   fetchAndRenderDropdown(personenSearch.value.trim());
 });
 
+if (personenSyncBtn) {
+  personenSyncBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    personenSyncBtn.style.pointerEvents = "none";
+    personenSyncBtn.style.opacity = "0.5";
+
+    try {
+      const response = await fetch("/api/users/sync", { method: "POST" });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        const errMsg = errData?.error || "Verzeichnis konnte nicht aktualisiert werden.";
+        showMessageBox("Fehler: " + errMsg);
+        return;
+      }
+
+      _cachedClasses = null;
+      await fetchAndRenderDropdown(personenSearch.value.trim());
+      personenDropdown.style.display = "flex";
+      showMessageBox("Verzeichnis aktualisiert.", "info");
+    } catch (err) {
+      console.error("Directory sync error:", err);
+      showMessageBox("Fehler beim Aktualisieren des Verzeichnisses!");
+    } finally {
+      personenSyncBtn.style.pointerEvents = "auto";
+      personenSyncBtn.style.opacity = "1";
+    }
+  });
+}
+
 personenDropdown.addEventListener("click", (e) => {
   e.stopPropagation();
   const item = e.target.closest(".dropdown-item");
@@ -290,7 +320,7 @@ personenDropdown.addEventListener("click", (e) => {
     selectedClasses.add(cls);
   } else if (item.dataset.userId) {
     // Individual user item
-    const uid = parseInt(item.dataset.userId);
+    const uid = item.dataset.userId;
     if (selectedUsers.has(uid)) return;
     selectedUsers.set(uid, {
       user_id: uid,
@@ -364,7 +394,9 @@ async function fetchAndRenderDropdown(query) {
       item.dataset.userId = u.user_id;
       item.dataset.userName = u.display_name;
       item.dataset.userEmail = u.email || "";
-      const label = u.email ? `${u.display_name} — ${u.email}` : u.display_name;
+      const classLabel = (u.job_title || "").trim();
+      const nameEmail = u.email ? `${u.display_name} — ${u.email}` : u.display_name;
+      const label = classLabel ? `${nameEmail} (${classLabel})` : nameEmail;
       item.innerHTML = `<p>${label}</p>`;
       personenDropdown.appendChild(item);
     });

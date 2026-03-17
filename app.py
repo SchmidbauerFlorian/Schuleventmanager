@@ -23,13 +23,53 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      get_my_events as svc_get_my_events,
                                      get_participant_tree as svc_get_participant_tree)
 from services.permission_service import can_plan
+from services.graph_service import sync_users_delegated, get_class_filter_delegated, sync_users_at_server_start
 import os, msal, uuid, requests
+import time
 import config
 
 
 app = Flask(__name__)
 app.config.from_object(config)
 app.secret_key = os.urandom(24)
+_startup_graph_sync_done = False
+
+
+def run_startup_graph_sync_once():
+    """Run one Graph user sync when this server process starts."""
+    global _startup_graph_sync_done
+    if _startup_graph_sync_done:
+        return
+
+    try:
+        synced_count = sync_users_at_server_start(
+            app.config["CLIENT_ID"],
+            app.config["CLIENT_SECRET"],
+            app.config["AUTHORITY"],
+        )
+        app.logger.info("Startup Graph sync completed: %s users", synced_count)
+    except Exception as sync_err:
+        app.logger.warning("Startup Graph sync failed: %s", sync_err)
+    finally:
+        _startup_graph_sync_done = True
+
+
+def _sync_graph_users_if_needed(force: bool = False):
+    """Synchronize users from Graph at most every 5 minutes per session."""
+    access_token = session.get("access_token")
+    if not access_token:
+        return
+
+    now = int(time.time())
+    last_sync = int(session.get("graph_users_synced_at", 0) or 0)
+    if not force and (now - last_sync) < 300:
+        return
+
+    try:
+        sync_users_delegated(access_token)
+        session["graph_users_synced_at"] = now
+    except Exception as sync_err:
+        app.logger.warning("Graph user sync failed: %s", sync_err)
 
 def _build_msal_app(cache=None):
     return msal.ConfidentialClientApplication(
@@ -62,10 +102,15 @@ def authorized():
     )
 
     if "access_token" in result:
+        session["access_token"] = result["access_token"]
         session["user"] = requests.get(
             app.config["ENDPOINT"],
             headers={"Authorization": "Bearer " + result["access_token"]},
         ).json()
+
+        # Keep local t_users in sync with Microsoft Graph so user/class search
+        # in planning reflects organization-wide directory data.
+        _sync_graph_users_if_needed(force=True)
 
     return redirect(url_for("participate"))
 
@@ -388,8 +433,21 @@ def api_update_cardinality():
 def api_get_users():
     q = request.args.get('q', None)
     try:
+        _sync_graph_users_if_needed()
         users = svc_get_users(q)
         return jsonify(users), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/users/sync', methods=['POST'])
+def api_sync_users():
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        _sync_graph_users_if_needed(force=True)
+        return jsonify({"status": "ok"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -397,10 +455,18 @@ def api_get_users():
 @app.route('/api/user-classes', methods=['GET'])
 def api_get_user_classes():
     try:
-        classes = svc_get_user_classes()
+        access_token = session.get("access_token")
+        if access_token:
+            classes = get_class_filter_delegated(access_token)
+        else:
+            classes = svc_get_user_classes()
         return jsonify(classes), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        try:
+            classes = svc_get_user_classes()
+            return jsonify(classes), 200
+        except Exception:
+            return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/add-persons', methods=['POST'])
@@ -451,4 +517,5 @@ def api_get_participant_tree(event_id):
 
 
 if __name__ == '__main__':
+    run_startup_graph_sync_once()
     app.run(host='localhost', port=5000, debug=True)
