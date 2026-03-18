@@ -325,11 +325,18 @@ def api_add_list_entry():
 
 @app.route('/api/update-instance-value', methods=['PUT'])
 def api_update_instance_value():
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     event_id = data.get('eventInstanceId')
-    auth_error = _require_event_edit_access(event_id)
-    if auth_error:
-        return auth_error
+    # Plan view sends eventInstanceId and must pass owner check.
+    # Participant view updates use this endpoint without eventInstanceId.
+    if event_id:
+        auth_error = _require_event_edit_access(event_id)
+        if auth_error:
+            return auth_error
 
     instance_id = data.get('instanceId')
     attr_name = data.get('attributeName')
