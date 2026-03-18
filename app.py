@@ -21,7 +21,9 @@ from services.event_service import (create_event, delete_event, get_events, get_
                                      get_user_classes as svc_get_user_classes,
                                      add_persons_from_users as svc_add_persons_from_users,
                                      get_my_events as svc_get_my_events,
-                                     get_participant_tree as svc_get_participant_tree)
+                                     get_participant_tree as svc_get_participant_tree,
+                                     can_edit_event as svc_can_edit_event,
+                                     is_event_owned_by_user as svc_is_event_owned_by_user)
 from services.permission_service import can_plan
 from services.graph_service import sync_users_delegated, get_class_filter_delegated, sync_users_at_server_start
 import os, msal, uuid, requests
@@ -70,6 +72,33 @@ def _sync_graph_users_if_needed(force: bool = False):
         session["graph_users_synced_at"] = now
     except Exception as sync_err:
         app.logger.warning("Graph user sync failed: %s", sync_err)
+
+
+def _get_user_identity_candidates(user: dict) -> list:
+    """Collect identity values that may match event.created_by."""
+    if not isinstance(user, dict):
+        return []
+    return [
+        user.get("mail"),
+        user.get("userPrincipalName"),
+        user.get("displayName"),
+        user.get("email"),
+    ]
+
+
+def _require_event_edit_access(event_instance_id: int):
+    """Ensure the current session user is allowed to edit the given event."""
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if not event_instance_id:
+        return jsonify({"error": "Missing eventInstanceId"}), 400
+
+    if not svc_can_edit_event(event_instance_id, _get_user_identity_candidates(user)):
+        return jsonify({"error": "Dieses Event darf nur vom Ersteller bearbeitet werden."}), 403
+
+    return None
 
 def _build_msal_app(cache=None):
     return msal.ConfidentialClientApplication(
@@ -148,8 +177,14 @@ def plan():
 
 @app.route('/api/events', methods=['POST'])
 def api_create_event():
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
-    events = create_event(data["eventName"])
+    created_by = user.get("mail") or user.get("userPrincipalName") or user.get("displayName") or "unknown"
+    user_candidates = _get_user_identity_candidates(user)
+    events = create_event(data["eventName"], created_by, user_candidates)
     return jsonify(events), 200
 
 @app.route('/api/events/<int:event_id>', methods=['GET'])
@@ -157,7 +192,12 @@ def api_get_event(event_id):
     user = session.get("user")
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    events = get_event(event_id)
+
+    user_candidates = _get_user_identity_candidates(user)
+    if not svc_is_event_owned_by_user(event_id, user_candidates):
+        return jsonify({"error": "Event nicht gefunden"}), 404
+
+    events = get_event(event_id, user_candidates)
     return jsonify(events), 200
 
 @app.route('/api/events', methods=['GET'])
@@ -165,14 +205,19 @@ def api_get_events():
     user = session.get("user")
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    user_id = user.get("id")
-    events = get_events(user_id)
+    user_candidates = _get_user_identity_candidates(user)
+    events = get_events(user_candidates)
     return jsonify(events), 200
 
 @app.route('/api/events', methods=['DELETE'])
 def api_delete_event():
     data = request.get_json()
-    event = delete_event(data["eventName"])
+    event_id = data.get("eventInstanceId")
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
+    event = delete_event(data["eventName"], _get_user_identity_candidates(session.get("user")))
     return jsonify(event), 200
 
 
@@ -183,6 +228,10 @@ def api_create_resource():
     user_ids = data.get('userIds', [])
     class_groups = data.get('classGroups', [])
     event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     if not resource_name or not event_id:
         return jsonify({"error": "Missing resourceName or eventInstanceId"}), 400
     result = svc_create_resource(resource_name, user_ids, class_groups, event_id)
@@ -194,6 +243,10 @@ def api_create_attribute():
     data = request.get_json()
     attr_type = data.get('type')
     event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     try:
         result = create_event_attribute(attr_type, data, event_id)
         return jsonify(result), 200
@@ -230,6 +283,10 @@ def api_link_entity():
     data = request.get_json()
     entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     if not entity_id or not event_id:
         return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
     result = link_entity_to_event(entity_id, event_id)
@@ -251,6 +308,10 @@ def api_add_list_entry():
     entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
     values = data.get('values', {})
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     if not entity_id or not event_id:
         return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
     try:
@@ -265,6 +326,11 @@ def api_add_list_entry():
 @app.route('/api/update-instance-value', methods=['PUT'])
 def api_update_instance_value():
     data = request.get_json()
+    event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     instance_id = data.get('instanceId')
     attr_name = data.get('attributeName')
     value = data.get('value')
@@ -294,6 +360,11 @@ def api_get_reference_values(entity_id, attribute_name):
 @app.route('/api/resources/rename', methods=['PUT'])
 def api_rename_resource():
     data = request.get_json()
+    event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     entity_id = data.get('entityId')
     new_name = data.get('newName')
     if not entity_id or not new_name:
@@ -310,6 +381,10 @@ def api_delete_resource():
     data = request.get_json()
     entity_id = data.get('entityId')
     event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     if not entity_id or not event_id:
         return jsonify({"error": "Missing entityId or eventInstanceId"}), 400
     try:
@@ -322,6 +397,11 @@ def api_delete_resource():
 @app.route('/api/attributes/rename', methods=['PUT'])
 def api_rename_attribute():
     data = request.get_json()
+    event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     entity_id = data.get('entityId')
     old_name = data.get('oldName')
     new_name = data.get('newName')
@@ -340,12 +420,16 @@ def api_rename_attribute():
 @app.route('/api/attributes/delete', methods=['DELETE'])
 def api_delete_attribute():
     data = request.get_json()
+    event_instance_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_instance_id)
+    if auth_error:
+        return auth_error
+
     entity_id = data.get('entityId')
     attr_name = data.get('attributeName')
     source = data.get('source', 'entity')
     relation_id = data.get('relationId')
     relation_name = data.get('relationName')
-    event_instance_id = data.get('eventInstanceId')
     if not attr_name:
         return jsonify({"error": "Missing attributeName"}), 400
     try:
@@ -359,6 +443,11 @@ def api_delete_attribute():
 @app.route('/api/list-entry', methods=['DELETE'])
 def api_delete_list_entry():
     data = request.get_json()
+    event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     instance_id = data.get('instanceId')
     rel_instance_id = data.get('relInstanceId')
     if not instance_id:
@@ -401,6 +490,10 @@ def api_add_relation_attribute():
     event_id = data.get('eventInstanceId')
     attr_name = data.get('attributeName')
     datatype = data.get('datatype', 'Text')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     if not entity_id or not event_id or not attr_name:
         return jsonify({"error": "Missing entityId, eventInstanceId or attributeName"}), 400
     try:
@@ -413,6 +506,11 @@ def api_add_relation_attribute():
 @app.route('/api/cardinality', methods=['PUT'])
 def api_update_cardinality():
     data = request.get_json()
+    event_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_id)
+    if auth_error:
+        return auth_error
+
     participant_id = data.get('participantId')
     card_min = data.get('cardMin', 0)
     card_max = data.get('cardMax')  # None = unlimited
@@ -474,6 +572,10 @@ def api_add_persons():
     data = request.get_json()
     entity_id = data.get('entityId')
     event_instance_id = data.get('eventInstanceId')
+    auth_error = _require_event_edit_access(event_instance_id)
+    if auth_error:
+        return auth_error
+
     filter_class = data.get('filterClass')
     filter_name = data.get('filterName')
     if not entity_id or not event_instance_id:

@@ -185,12 +185,17 @@ window.addEventListener("eventSelected", async () => {
 
 async function deleteEvent() {
   const eventName = document.getElementById("inputEventNameDelete").value;
+  const eventId = getCurrentEventId();
+  if (!eventId) {
+    showMessageBox("Fehler: Bitte ein einzelnes Event auswählen!");
+    return;
+  }
 
   try {
     const response = await fetch("/api/events", {
       method: "DELETE",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ eventName })
+      body: JSON.stringify({ eventName, eventInstanceId: eventId })
     });
 
     if (!response.ok) {
@@ -895,6 +900,7 @@ function startInlineEdit(cell, instance, attr, resource) {
           attributeName: attr.name,
           value: newVal,
           entityId: resource.entity_id,
+          eventInstanceId: getCurrentEventId(),
           source: attr.source || 'relation',
         };
         if (attr.source === 'relation') {
@@ -974,6 +980,7 @@ function startInlineEdit(cell, instance, attr, resource) {
         attributeName: attr.name,
         value: newVal,
         entityId: resource.entity_id,
+        eventInstanceId: getCurrentEventId(),
         source: attr.source || 'relation',
       };
       if (attr.source === 'relation') {
@@ -1303,6 +1310,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
               body: JSON.stringify({
                 instanceId: instance._id,
                 relInstanceId: instance._rel_instance_id || null,
+                eventInstanceId: getCurrentEventId(),
               }),
             });
             refreshTreeView();
@@ -1356,6 +1364,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
                     attributeName: attr.name,
                     value: v,
                     entityId: resource.entity_id,
+                    eventInstanceId: getCurrentEventId(),
                     source: attr.source || 'relation',
                   };
                   if (attr.source === 'relation') {
@@ -1404,6 +1413,7 @@ function renderTreeView(resources, unlinkedEntities = []) {
                     attributeName: attr.name,
                     value: item.textContent,
                     entityId: resource.entity_id,
+                    eventInstanceId: getCurrentEventId(),
                     source: attr.source || 'relation',
                   };
                   if (attr.source === 'relation') {
@@ -1769,10 +1779,16 @@ document.getElementById('btnSaveCardinality').addEventListener('click', async (e
     return;
   }
   try {
+    const eventId = getCurrentEventId();
+    if (!eventId) {
+      showMessageBox('Fehler: Kein Event ausgewählt!');
+      return;
+    }
+
     const resp = await fetch("/api/cardinality", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId: editingResource.participantId, cardMin: minVal, cardMax: maxVal }),
+      body: JSON.stringify({ participantId: editingResource.participantId, cardMin: minVal, cardMax: maxVal, eventInstanceId: eventId }),
     });
     if (resp.ok) {
       showMessageBox("Kardinalität gespeichert!");
@@ -1798,11 +1814,17 @@ document.getElementById('btnUpdateRessource').addEventListener('click', async (e
   }
 
   try {
+    const eventId = getCurrentEventId();
+    if (!eventId) {
+      showMessageBox('Fehler: Kein Event ausgewählt!');
+      return;
+    }
+
     if (newName !== editingResource.entity_type) {
       const response = await fetch('/api/resources/rename', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entityId: editingResource.entity_id, newName }),
+        body: JSON.stringify({ entityId: editingResource.entity_id, newName, eventInstanceId: eventId }),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => null);
@@ -1876,11 +1898,18 @@ document.getElementById('btnUpdateAttribut').addEventListener('click', async (e)
   }
 
   try {
+    const eventId = getCurrentEventId();
+    if (!eventId) {
+      showMessageBox('Fehler: Kein Event ausgewählt!');
+      return;
+    }
+
     if (newName !== editingAttribute.name || (newAccess && newAccess !== editingAttribute.access)) {
       const response = await fetch('/api/attributes/rename', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          eventInstanceId: eventId,
           entityId: editingAttribute.entity_id,
           oldName: editingAttribute.name,
           newName,
@@ -1911,10 +1940,17 @@ document.getElementById('btnDeleteAttribut').addEventListener('click', async (e)
   if (!editingAttribute) return;
 
   try {
+    const eventId = getCurrentEventId();
+    if (!eventId) {
+      showMessageBox('Fehler: Kein Event ausgewählt!');
+      return;
+    }
+
     const response = await fetch('/api/attributes/delete', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        eventInstanceId: eventId,
         entityId: editingAttribute.entity_id,
         attributeName: editingAttribute.name,
         source: editingAttribute.source || 'relation',

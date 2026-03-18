@@ -48,16 +48,20 @@ def fetch_all_events():
 
 # create_entity_with_attributes (entity_type TEXT, attribute_names TEXT, p_datatypes TEXT, p_is_event BOOL, p_is_required_flags TEXT)
 # create_entity_instance        (p_entity_type TEXT, p_attribute_names TEXT, p_values TEXT)
-def create_event_by_name(eventtype: str, name: str) -> int:
+def create_event_by_name(eventtype: str, name: str, created_by: str = None) -> int:
     """Creates a new event entity type + instance. Returns the new entity_instance_id."""
     import datetime
     conn = get_connection()
     cur = conn.cursor()
     # Erstellt Entity-Typ + Attribute
-    cur.execute("CALL create_entity_with_attributes(?, ?, ?, true, ?)", (eventtype, "name,created_at", "VARCHAR,TIMESTAMP", "1,0"))
+    cur.execute(
+        "CALL create_entity_with_attributes(?, ?, ?, true, ?)",
+        (eventtype, "name,created_at,created_by", "VARCHAR,TIMESTAMP,VARCHAR", "1,0,0")
+    )
     # Instanziierung des Entity-Typs
-    values_str = f"{name},{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    cur.execute("CALL create_entity_instance(?, ?, ?)", (eventtype, "name,created_at", values_str))
+    created_by_value = (created_by or "unknown").replace(",", " ")
+    values_str = f"{name},{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},{created_by_value}"
+    cur.execute("CALL create_entity_instance(?, ?, ?)", (eventtype, "name,created_at,created_by", values_str))
     conn.commit()
     # Retrieve the newly created instance_id by matching event name
     cur2 = conn.cursor()

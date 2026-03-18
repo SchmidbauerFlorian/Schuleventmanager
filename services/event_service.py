@@ -250,34 +250,97 @@ def _build_empty_response() -> dict:
     }
 
 
-def delete_event(event_name: str) -> dict:
+def _normalize_user_candidates(user_candidates: list) -> set:
+    return {
+        str(candidate).strip().lower()
+        for candidate in (user_candidates or [])
+        if candidate is not None and str(candidate).strip()
+    }
+
+
+def is_event_owned_by_user(event_instance_id: int, user_candidates: list) -> bool:
+    """Strict ownership check: True only when created_by matches current user."""
+    if not event_instance_id:
+        return False
+
+    attrs = queries.get_event_instance_attributes(event_instance_id)
+    created_by = str(attrs.get("created_by") or "").strip().lower()
+    if not created_by:
+        return False
+
+    return created_by in _normalize_user_candidates(user_candidates)
+
+
+def _filter_events_by_owner(all_stats: list, user_candidates: list) -> list:
+    """Keep only events created by current user."""
+    normalized = _normalize_user_candidates(user_candidates)
+    if not normalized:
+        return []
+
+    owned = []
+    for row in all_stats:
+        event_id = row.get('event_instance_id')
+        if not event_id:
+            continue
+        attrs = queries.get_event_instance_attributes(event_id)
+        created_by = str(attrs.get("created_by") or "").strip().lower()
+        if created_by and created_by in normalized:
+            owned.append(row)
+    return owned
+
+
+def delete_event(event_name: str, user_candidates: list = None) -> dict:
     queries.delete_event_by_name(event_name)
     all_stats = queries.fetch_all_events()
+    if user_candidates is not None:
+        all_stats = _filter_events_by_owner(all_stats, user_candidates)
     if not all_stats:
         return _build_empty_response()
     return _build_aggregate_response(all_stats)
 
 
-def create_event(event_name: str) -> dict:
-    new_id = queries.create_event_by_name(event_name, event_name)
+def create_event(event_name: str, created_by: str = None, user_candidates: list = None) -> dict:
+    new_id = queries.create_event_by_name(event_name, event_name, created_by)
     all_stats = queries.fetch_all_events()
+    if user_candidates is not None:
+        all_stats = _filter_events_by_owner(all_stats, user_candidates)
     if not all_stats:
         return _build_empty_response()
     return _build_single_event_response(all_stats, new_id)
 
 
-def get_event(event_id: int) -> dict:
+def get_event(event_id: int, user_candidates: list = None) -> dict:
     all_stats = queries.fetch_all_events()
+    if user_candidates is not None:
+        all_stats = _filter_events_by_owner(all_stats, user_candidates)
     if not all_stats:
         return _build_empty_response()
     return _build_single_event_response(all_stats, event_id)
 
 
-def get_events(user_id) -> dict:
+def get_events(user_candidates: list = None) -> dict:
     all_stats = queries.fetch_all_events()
+    if user_candidates is not None:
+        all_stats = _filter_events_by_owner(all_stats, user_candidates)
     if not all_stats:
         return _build_empty_response()
     return _build_aggregate_response(all_stats)
+
+
+def can_edit_event(event_instance_id: int, user_candidates: list) -> bool:
+    """Return True if one of the user identities matches event.created_by."""
+    if not event_instance_id:
+        return False
+
+    if is_event_owned_by_user(event_instance_id, user_candidates):
+        return True
+
+    attrs = queries.get_event_instance_attributes(event_instance_id)
+    if not str(attrs.get("created_by") or "").strip():
+        # Legacy events may not have created_by yet.
+        return True
+
+    return False
 
 
 # =========================================================================
